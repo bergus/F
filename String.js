@@ -37,11 +37,11 @@ if (!String.prototype.quote) String.prototype.quote = function() {
 };
 if (!String.prototype.trimRight) String.prototype.trimRight = function () {
 /* Trims whitespace from the end of the string */
-	return this.replace(/\s+$/,'');  
+	return this.replace(/\s+$/,'');
 };
 if (!String.prototype.trimLeft) String.prototype.trimLeft = function () {
 /* Trims whitespace from the beginning of the string */
-	return this.replace(/^\s+/,'');  
+	return this.replace(/^\s+/,'');
 };
 
 
@@ -135,7 +135,7 @@ String.prototype.mask = function(chars, maske) {
 var s = "abcd",
 	m = [-5,-4,-3,-2,-1,0,1,2,3,4,5];
 return Array.kartesischesProdukt(m, m).map(function(x) {
-	return "("+x[0]+","+x[1]+"):  \t" + 
+	return "("+x[0]+","+x[1]+"):  \t" +
 		[s.substr, s.substring, s.slice].map(function(y) {
 			return y.apply(s,x);
 		}).join("\t");

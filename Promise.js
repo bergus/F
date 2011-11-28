@@ -43,7 +43,7 @@ return: a Promise to call all added Listeners when fn returns a result after inv
 		multiple = 1;
 	if ([0, 1, 2].indexOf(multiple) > -1)
 		multiple = 0;
-	
+
 	function end(result, type) {
 //console.debug(this);
 		if (ended === true)
@@ -76,7 +76,7 @@ console.assert(result instanceof Array, "Promise|end: result ist weder undefined
 		for (var i=0; i<of.length; i++)
 			if (typeof of[i] == "function")
 				of(result, type);
-		
+
 		return ended = true;
 	}
 	function sucessCallback() {
@@ -98,7 +98,7 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 				on.message[i].apply(source, res);
 		return true;
 	}
-	
+
 	this.start = function(p) {
 		var params = [].slice.call(arguments, 0);
 		if (ended === true) {
@@ -222,7 +222,7 @@ console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
 				wenn.onError(e);
 			}
 			wenn.onMessage(m); // unmöglich, die Message an dann weiterzuleiten
-			
+
 			if(!wenn.start(p))
 				return false;
 			return function stop() {
@@ -245,26 +245,26 @@ console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
 			});
 			wenn.onError(e); // forwarding
 			wenn.onMessage(m); // forwarding
-			
+
 			return wenn.start(p);
 		});
 	},
 	correct: function(sonst) {
 /* handler errors, wie bei then() nur ohne dann */
 		var wenn = this;
-		
+
 		if (! (sonst instanceof this.constructor))
 			sonst = new Promise(sonst); // console.assert(typeof sonst == "function")
 		wenn.onError(sonst.start);
-		
+
 		return new Promise(function(p, s, e, m) {
 			wenn.onSucess(s);
 			wenn.onMessage(m);
-			
+
 			sonst.onSucess(s);
 			sonst.onError(e);
 			sonst.onMessage(m);
-			
+
 			if(!wenn.start(p))
 				return false;
 			return function stop() {
@@ -297,7 +297,7 @@ return: a restartable (not multiple) Promise which calls this only once to get *
 			else
 				that.onError(e); // restart possible
 			that.onMessage(m);
-			
+
 			return that.start(p);
 		}, true);
 	},
@@ -355,14 +355,14 @@ return: Promise, dass jedes übergebene erfüllt ist */
 		});
 	},
 	Chain: function() {
-		
+
 	},
 	get Automat() { return this.Machine; },
 	Machine: function() {
 /* get:
 return: a Promise to be fulfilled when the final state is reached
 	implements a full finite-state-machine */
-		
+
 	},
 	Stream: Object.set( function PromiseStream(fn) {
 /* get: function(params, callback, e, m)
@@ -463,8 +463,8 @@ console.debug("Promise.Stream: new item", item);
 			});
 		},
 		reduce: function(fn, accum) {
-			if (typeof fn !== "function")  
-				throw new TypeError(); 
+			if (typeof fn !== "function")
+				throw new TypeError();
 			var i = 0, s = this;
 			return new Promise(function(p, s, e, m) {
 				s.each(function(r){

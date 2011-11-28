@@ -20,7 +20,7 @@ Array.kartesischesProdukt = Array.cartesian = function cartesian() {
 /* get: Array, Array[, ...]
 return: (multiples) kartesisches Produkt der übergebenen Arrays,
 			sprich ein Array mit allen Arrays, die jeweils die Zahl der übergebenen Arrays als Länge haben und deren Werte eine Kombination aus Werten der übergebenen Arrays darstellen
-			die Reihenfolge wird dabei nicht verändert, d.h. der 5. Wert eines Ergebnisarrays stammt aus dem 5. übergebenen Array 
+			die Reihenfolge wird dabei nicht verändert, d.h. der 5. Wert eines Ergebnisarrays stammt aus dem 5. übergebenen Array
 			Bsp: Array.kartesisches Produkt([1,2],[3,4,5])==[[1,3],[1,4],[1,5],[2,3],[2,4],[2,5]] */
 	var r = [], arg = arguments, max = arg.length-1;
 	function helper(arr, i) {
@@ -312,7 +312,7 @@ Array.prototype.sum = function(){
 		result += this[l];
 	return result;
 };
-	
+
 Array.prototype.kumulierteQuadratischeAbweichung = function(e) {
 	if (typeof e != "number") e = this.durchschnitt();
 	return this.reduce(function(x, y){var d=y-e; return x+d*d;},0);

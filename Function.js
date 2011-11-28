@@ -1,7 +1,7 @@
 /* Look into hocf.html for more information */
 
 Function.prototype.callarg = function(context/*, arg1, ...*/) {
-	var fn = this, 
+	var fn = this,
 		args = arguments;
 	return function() {
 		return Function.prototype.call.apply(fn, args);
@@ -15,7 +15,7 @@ Function.prototype.callarg = function(context/*, arg1, ...*/) {
 } */
 
 Function.prototype.argwith = function(/*arg1, ...*/) {
-	var fn = this, 
+	var fn = this,
 		args = arguments;
 	return function(context) {
 		return fn.apply(context, arg);
@@ -23,7 +23,7 @@ Function.prototype.argwith = function(/*arg1, ...*/) {
 }
 
 Function.prototype.argcall = function(/*arg1, ...*/) {
-	var fn = this, 
+	var fn = this,
 		args = Array.prototype.slice.call(arguments);
 	return function(context, /*argM, ...*/) {
 		return fn.apply(context, arsg.concat(Array.prototype.slice.call(arguments, 1)));
@@ -35,7 +35,7 @@ Function.prototype.argcall = function(/*arg1, ...*/) {
 } */
 
 Function.prototype.arg = function(/*arg1, ...*/)) {
-	var fn = this, 
+	var fn = this,
 		args = arguments;
 	return function() {
 		return fn.apply(this, arg);
@@ -45,7 +45,7 @@ Function.prototype.arg = function(/*arg1, ...*/)) {
 Function.prototype.pcall = Function.prototype.partial = function() {
 	if (arguments.length < 1)
 		return this;
-	var fn = this, 
+	var fn = this,
 		args = Array.prototype.slice.call(arguments);
 	return function(/*argM, ...*/) {
 		return fn.apply(this, arsg.concat(Array.prototype.slice.call(arguments)));
@@ -93,7 +93,7 @@ Function.prototype.bool = function(wahr) {
 	return function() { return ! (wahr ^ fn.apply(null, arguments)); };
 }
 Function.prototype.arg = function() {
-	var fn = this, 
+	var fn = this,
 		arg = Array.prototype.slice.call(arguments, 0);
 	return function() { return fn.apply(null, arg); };
 }
