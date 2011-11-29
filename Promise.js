@@ -11,13 +11,14 @@
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r, s){ [...]; return fn(x, y, z);})
 */
 
-jBergi.Promise = window.Promise = function Promise(fn, multiple) {
+window.Promise = function Promise(fn, multiple) {
 /* get: function callback(Array arguments, Function onsucess, Function onerror[, Function onmessage])[, 0/false: only once | 1/true: restartable | 2: multiple (cloneable)]
 return: a Promise to call all added Listeners when fn returns a result after invoking start()
 		ein Versprechen, alle angefügten Listener aufzurufen, wenn nach dem Aufruf von start() Ergebnisse von fn zurückkomen */
-
+	if (fn instanceof Promise)
+		return fn;
 	if (typeof fn != "function")
-		throw new TypeError("(new) Promise must be called with a function argument");
+		throw new TypeError("(new) Promise must be called with a function as the argument");
 	var that = this,
 		wenn = null,
 		erg = null,
@@ -201,13 +202,10 @@ console.assert(typeof go == "function", "Promise.start: gestopptes Promise ohne 
 Object.extend(window.Promise.prototype, {
 	then: function(dann, sonst) {
 		var wenn = this;
-		if (! (dann instanceof this.constructor))
-			dann = new Promise(dann); // console.assert(typeof dann == "function")
-console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
+		dann = new Promise(this.constructor);
 		wenn.onSucess(dann.start);
 		if (sonst) {
-			if (! sonst instanceof this.constructor)
-				sonst = new Promise(sonst); // console.assert(typeof sonst == "function")
+			sonst = new Promise(sonst);
 			wenn.onError(sonst.start);
 		}
 		return new Promise(function(p, s, e, m) {
@@ -221,9 +219,9 @@ console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
 			} else {
 				wenn.onError(e);
 			}
-			wenn.onMessage(m); // unmöglich, die Message an dann weiterzuleiten
-
-			if(!wenn.start(p))
+			wenn.onMessage(m);
+			
+			if (!wenn.start(p))
 				return false;
 			return function stop() {
 				var start;
@@ -233,7 +231,8 @@ console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
 			};
 		});
 	},
-	syncThen: function(fn) { // see also Promise.filter (which can't raise errors)
+	syncThen: function(fn) {
+// see also Promise.filter (which can't raise errors)
 		var wenn = this;
 		return new Promise(function(p, s, e, m) {
 			wenn.onSucess(function(r) {
@@ -250,11 +249,9 @@ console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
 		});
 	},
 	correct: function(sonst) {
-/* handler errors, wie bei then() nur ohne dann */
+/* handle errors, wie bei then() nur ohne dann */
 		var wenn = this;
-
-		if (! (sonst instanceof this.constructor))
-			sonst = new Promise(sonst); // console.assert(typeof sonst == "function")
+		sonst = new Promise(sonst);
 		wenn.onError(sonst.start);
 
 		return new Promise(function(p, s, e, m) {
@@ -268,7 +265,6 @@ console.assert(dann instanceof Promise, "Promise.then: dann ist kein Promise");
 			if(!wenn.start(p))
 				return false;
 			return function stop() {
-				return wenn.stop() || sonst.stop() || false; // ist das nicht kürzer?
 				var start;
 				if (start = wenn.stop() || start = sonst.stop())
 					return start;

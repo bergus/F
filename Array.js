@@ -9,6 +9,7 @@ return: echtes Array */
 		return o.toArray();
 	if (typeof o.length != "number")
 		throw new TypeError('Array.toArray called on object without length');
+	// return Array.prototype.slice.call(o, 0);
 	var i, l=o.length, ret=Array(l);
 	for (i=0; i<l; i++)
 		if (Object.prototype.hasOwnProperty.call(o, i))
@@ -286,26 +287,22 @@ Object.keys(Array.prototype).concat(
 ).concat(
 	["filter", "forEach", "every", "map", "some", "reduce", "reduceRight"]
 ).forEach(function(method) {
-	Array[method] = Array.prototype[method].
-
+	Array[method] = Function.prototype.argwith.bind(Array.prototype[method]);
 });
 
-Array.prototype.durchschnitt = function() {
-	return this.reduce(function(x, y){return x+y;},0)/this.length;
-};
-Array.prototype.min = function(){
+Array.prototype.min = function min(){
 	return Math.min.apply(null, this);
 };
 
-Array.prototype.max = function(){
+Array.prototype.max = function max(){
 	return Math.max.apply(null, this);
 };
 
-Array.prototype.average = function(){
-	return this.length ? this.sum() / this.length : 0;
+Array.prototype.durchschnitt = Array.prototype.average = function average(){
+	return this.length ? this.sum() / this.length : NaN;
 };
 
-Array.prototype.sum = function(){
+Array.prototype.sum = function sum(){
 	// return this.reduce(function(x, y){return x+y;}, 0);
 	var result = 0, l = this.length;
 	while (l--)
@@ -313,7 +310,14 @@ Array.prototype.sum = function(){
 	return result;
 };
 
-Array.prototype.kumulierteQuadratischeAbweichung = function(e) {
-	if (typeof e != "number") e = this.durchschnitt();
-	return this.reduce(function(x, y){var d=y-e; return x+d*d;},0);
+Array.prototype.kumulierteQuadratischeAbweichung = function kqa(e) {
+	if (typeof e != "number")
+		e = this.durchschnitt();
+	return this.reduce(function(x, y) {
+		var d = y-e;
+		return x+d*d;
+	}, 0);
 };
+Array.prototype.mittlereQuadratischeAbweichung = Array.prototype.mse = function mse(e) {
+	return this.length ? this.kumulierteQuadratischeAbweichung(e) : 0;
+}
