@@ -76,7 +76,7 @@ console.assert(result instanceof Array, "Promise|end: result ist weder undefined
 		var of = on["final"];
 		for (var i=0; i<of.length; i++)
 			if (typeof of[i] == "function")
-				of(result, type);
+				of[i](result, type);
 
 		return ended = true;
 	}
@@ -100,7 +100,7 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 		return true;
 	}
 
-	this.start = function(p) {
+	this.start = function startPromise(p) {
 		var params = [].slice.call(arguments, 0);
 		if (ended === true) {
 			if (multiple > 0) {
@@ -111,22 +111,22 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 			} else
 				return false; // restart verhindern
 		}
-		if (multiple < 2 && stopp) // fn/wenn läuft bereits
-			return false;
 		if (stopped) {
 			stopped = false;
 			if (ended)
 				return end(cache, ended); // continue
-console.assert(typeof go == "function", "Promise.start: gestopptes Promise ohne go-Funktion");
-			return go();
+			if (typeof go == "function")
+				/*return*/ stopp = go();
+			return that.stop;
 		}
+		if (multiple < 2 && stopp) // fn/wenn läuft bereits
+			return false;
 
 		erg = fn(arguments.length > 1 ? params : p, sucessCallback, errorCallback, messageCallback);
 		if (erg instanceof that.constructor) { // ermöglicht "REKURSION"
 			wenn = erg;
 			wenn.onSucess(sucessCallback);
 			wenn.onError(errorCallback);
-//console.log("Uuuh, eine zum Promise expandierende Funktion: "+wenn);
 			stopp = wenn.start(); // .apply(null, params); ?
 			if (! stopp)
 				console.log("Promise.start: wenn ließ sich nicht starten");
@@ -145,15 +145,16 @@ console.assert(typeof go == "function", "Promise.start: gestopptes Promise ohne 
 		}
 		if (! stopp)
 			stopp = true;
-		return this.stop;
+		return that.stop;
 	};
-	this.stop = function() {
+	this.stop = function stopPromise() {
 		if (stopped || ended === true)
 			return false;
 		stopped = true;
 //console.log("promise stopped");
 		if (typeof stopp == "function")
-			return go = stopp();
+			/*return*/ go = stopp();
+		return that.start;
 	};
 	this.onSucess = function() {
 		Array.prototype.push.apply(on.sucess, arguments);
@@ -177,7 +178,7 @@ console.assert(typeof go == "function", "Promise.start: gestopptes Promise ohne 
 		Array.prototype.push.apply(filter[what], Array.prototype.slice.call(arguments, 1));
 		return this;
 	};
-	this.toString = function() {
+	this.toString = function stringofPromise() {
 		return "[Promise\nstart: "+(wenn
 			? wenn.toString().split("\n").join("\n\t")
 			: fn.name || "<anonymus>"
@@ -202,10 +203,10 @@ console.assert(typeof go == "function", "Promise.start: gestopptes Promise ohne 
 Object.extend(window.Promise.prototype, {
 	then: function(dann, sonst) {
 		var wenn = this;
-		dann = new Promise(this.constructor);
+		dann = new this.constructor(dann);
 		wenn.onSucess(dann.start);
 		if (sonst) {
-			sonst = new Promise(sonst);
+			sonst = new this.constructor(sonst);
 			wenn.onError(sonst.start);
 		}
 		return new Promise(function(p, s, e, m) {
@@ -225,8 +226,8 @@ Object.extend(window.Promise.prototype, {
 				return false;
 			return function stop() {
 				var start;
-				if (start = wenn.stop() || start = dann.stop() || start = sonst.stop())
-					return start;
+				if ((start = wenn.stop()) || (start = dann.stop()) || (start = sonst.stop()))
+					return start.result(stop);
 				return false;
 			};
 		});
@@ -248,10 +249,16 @@ Object.extend(window.Promise.prototype, {
 			return wenn.start(p);
 		});
 	},
+	detachThen: function(fn) {
+// fn won't be called with any parameters given to start
+		return this.then(function() {
+			return new Promise(fn);
+		});
+	},
 	correct: function(sonst) {
 /* handle errors, wie bei then() nur ohne dann */
 		var wenn = this;
-		sonst = new Promise(sonst);
+		sonst = new this.constructor(sonst);
 		wenn.onError(sonst.start);
 
 		return new Promise(function(p, s, e, m) {
@@ -266,8 +273,8 @@ Object.extend(window.Promise.prototype, {
 				return false;
 			return function stop() {
 				var start;
-				if (start = wenn.stop() || start = sonst.stop())
-					return start;
+				if ((start = wenn.stop()) || (start = sonst.stop()))
+					return start.result(stop);
 				return false;
 			};
 		});
@@ -299,6 +306,18 @@ return: a restartable (not multiple) Promise which calls this only once to get *
 	},
 	branch: function() {
 	// neues Promise, das aber von der Ausführungsreihenfolge abgekoppelt ist (wird nur erfüllt, wenn es _selbst_ gestartet wurde)
+	},
+	each: function(fn) {
+		return this.then(function each(res) {
+			if (!Array.isArray(res))
+				return (new Promise(fn)).start.apply(null, Array.prototype.slice.call(arguments, 0));
+			return Promise.merge(res.map(fn));
+		});
+	},
+	defer: function(ms) {
+		if (ms <= 0)
+			return this;
+		return Promise.wait(ms).then(this);
 	}
 });
 
@@ -306,11 +325,14 @@ Object.extend(window.Promise, {
 	when: function(p, dann, sonst) {
 		return p.then(dann, sonst);
 	},
-	wait: function(time) {
+	wait: function(ms) {
+// see also Promise.prototype.defer
+		if (typeof ms != "number")
+			throw new TypeError("Promise.defer: ms must be a number, not a "+typeof ms);
 		return new Promise(function(p, s) {
-			window.setTimeout(function() {
-				s(p);
-			}, time);
+			setTimeout(function() {
+				s[Array.isArray(p) ? "apply" : "call"](null, p);
+			}, ms);
 		});
 	},
 	merge: function(promises, automerge) {
@@ -320,15 +342,22 @@ return: Promise, dass jedes übergebene erfüllt ist */
 			promises = Array.prototype.slice.call(arguments, 0);
 			automerge = false;
 		}
-		if (promises.length == 1)
+		promises = promises.filter(function(p) {
+			return typeof p == "function" || p instanceof Promise;
+		});
+console.debug("Promise.merge",promises);
+		if (promises.length == 1) {
+			var promise = new Promise(promises[0]);
 			return automerge
-				? promises[0]
-				: promises[0].filter("sucess", function(r) {
+				? promise
+				: promise.filter("sucess", function(r) {
 					return [r]; // man erwartet schließlich ein Array von uns
 				});
-		var results = [];
-		var counter = 0;
+		}
 		return new Promise(function(p, s, e, m) {
+			var results = [];
+			var stopgo = [];
+			var counter = 0;
 			function newValues(r, i) {
 				for (var j=0; j<r.length; j++) {
 					if (! results[j])
@@ -342,12 +371,22 @@ return: Promise, dass jedes übergebene erfüllt ist */
 						results[j] = (Array.isArray(results[j][0]) ? [] : Object).merge.apply([], results[j]);
 				s.apply(null, results);
 			}
-			for (var i=0; i<promises.length; i++) {
-				promises[i].onSucess(function(r) {
+			if (promises.length == 0)
+				s.apply(null, results);
+			
+			promises.forEach(function(promise, i) {
+				stopgo.push(new Promise(promise).onSucess(function(r) {
 					// m("new Value");
 					newValues(arguments, i);
-				}).onError(e).onMessage(m).start(p);
-			}
+				}).onError(e).onMessage(m).start(p));
+			});
+			
+			return function startstop() {
+				for (var i=0; i<stopgo.length; i++)
+					if (typeof stopgo[i] == "function")
+						stopgo[i] = stopgo[i]();
+				return startstop;
+			};
 		});
 	},
 	Chain: function() {

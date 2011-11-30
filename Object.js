@@ -1,4 +1,4 @@
-if (!Object.values) Object.values = function values(o, e) { // e not standard
+ï»¿if (!Object.values) Object.values = function values(o, e) { // e not standard
 	if (o !== Object(o))
 		throw new TypeError('Object.values called on non-object');
 	var ret=[], p;
@@ -17,14 +17,14 @@ if (!Object.clone) Object.clone = function clone(o, d) {
 	if (o.constructor == Date || o.constructor == RegExp || o.constructor == String || o.constructor == Number || o.constructor == Boolean)
 		n = new o.constructor(o);
 	if (o.constructor == Function)
-		n = o; // new Function(o) a) funktioniert nicht in Opera b) tut merkwürdige Dinge in Firefox
+		n = o; // new Function(o) a) funktioniert nicht in Opera b) tut merkwÃ¼rdige Dinge in Firefox
 	if (n !== Object(n))
 		n = new o.constructor(); // {}
 	return Object.extend(n, o, d);
 };
 
 if (!Object.extend) Object.extend = function extend(o, q, d, col) {
-/* get: zu erweiterndes Objekt (Funktion, etc), Quellobjekt mit den Eigenschaften[, tief klonen statt kopieren][, Kollisionsfunktion(key, überschriebener Wert, überschreibender Wert, erweitertes Objekt, erweiterndes Objekt)]
+/* get: zu erweiterndes Objekt (Funktion, etc), Quellobjekt mit den Eigenschaften[, tief klonen statt kopieren][, Kollisionsfunktion(key, Ã¼berschriebener Wert, Ã¼berschreibender Wert, erweitertes Objekt, erweiterndes Objekt)]
 return: erweitertes Objekt */
 	if (o !== Object(o) || q !== Object(q))
 		throw new TypeError('Object.extend called on non-object');
@@ -47,7 +47,7 @@ return: erweitertes Objekt */
 };
 
 if (!Object.set) Object.set = function set(o, key, value, col) {
-/* get: zu erweiterndes Objekt (Funktion, etc), String key (property), mixed value[, Kollisionsfunktion(key, überschriebener Wert, überschreibender Wert, erweitertes Objekt)]
+/* get: zu erweiterndes Objekt (Funktion, etc), String key (property), mixed value[, Kollisionsfunktion(key, Ã¼berschriebener Wert, Ã¼berschreibender Wert, erweitertes Objekt)]
 return: erweitertes Objekt */
 	if (o !== Object(o))
 		throw new TypeError('Object.set called on non-object');
@@ -60,7 +60,7 @@ return: erweitertes Objekt */
 };
 
 Object.get = function get(key) {
-	if (typeof key == "string" && arguments.length < 2) {
+	if (typeof key == "string" && arguments.length < 2)
 		return function(o) {
 			if (o !== Object(o))
 				throw new TypeError('Object.get('+key+') called on non-object');
@@ -80,7 +80,7 @@ Object.get = function get(key) {
 
 Object.merge = function merge(a, b) {
 	if (Object(a) !== a)
-		throw new TypeError("Object.merge called on non-object');
+		throw new TypeError('Object.merge called on non-object');
 	if (Array.isArray(a))
 		return Array.prototype.merge.apply(a, Array.prototype.slice.apply(arguments, 1));
 	Object.extend(a, b, false, function merge(k, a, b) {
@@ -101,8 +101,8 @@ Object.merge = function merge(a, b) {
 }; */
 
 if(!Object.toArray) Object.toArray = function toArray(o, f) {
-/* get: Objekt, funktion(Schlüssel, Eigenschaft) returns Arrayeintrag
-return: Array mit den jeweils zurückgegebenen Werten */
+/* get: Objekt, funktion(SchlÃ¼ssel, Eigenschaft) returns Arrayeintrag
+return: Array mit den jeweils zurÃ¼ckgegebenen Werten */
 	if (o !== Object(o))
 		if (typeof (f=o) == "function")
 			return function(o) {return toArray(o, f);};
@@ -114,7 +114,7 @@ return: Array mit den jeweils zurückgegebenen Werten */
 };
 
 if(!Object.join) Object.join = function join(o, j, f) {
-/* get: Objekt, verknüpfender String[, Funktion wie bei Object.toArray]
+/* get: Objekt, verknÃ¼pfender String[, Funktion wie bei Object.toArray]
 return: String */
 	if (typeof f != "function")
 		f = function(key, value) { return key+": "+value; }; // toString impliziert
@@ -131,6 +131,6 @@ Object.isEmpty = function isEmpty(o) {
 		throw new TypeError('Object.isEmpty called on non-object');
 	for (var key in this)
 		if (Object.prototype.hasOwnProperty.call(o, key))
-			return false:
+			return false;
 	return true;
 };

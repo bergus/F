@@ -1,4 +1,4 @@
-// Non-standards from Firefox
+ï»¿// Non-standards from Firefox
 if (!String.prototype.quote) String.prototype.quote = function() {
 	// return JSON.stringify(this).substr(1,-1);
 	var s;
@@ -8,9 +8,9 @@ if (!String.prototype.quote) String.prototype.quote = function() {
 			if (c == 34)
 				s += "\\\"";
 			else if (c == 39)
-				s += "\\'":
+				s += "\\'";
 			else if (c == 92)
-				s += "\\\\"
+				s += "\\\\";
 			else
 				s += this.charAt(i);
 		} else {
@@ -81,11 +81,11 @@ String.prototype.reverse = function() {
 	return this.split("").reverse().join("");
 }
 String.prototype.spn = function(s) {
-/* Ermittelt die Länge der am Anfang übereinstimmenden Zeichen, PHP: strspn() */
+/* Ermittelt die LÃ¤nge der am Anfang Ã¼bereinstimmenden Zeichen, PHP: strspn() */
 	return this.match(new RegExp("^["+s+"]*"))[0].length;
 }
 String.prototype.endspn = function(s, e) {
-/* Ermittelt die Länge der am Ende übereinstimmenden Zeichen */
+/* Ermittelt die LÃ¤nge der am Ende Ã¼bereinstimmenden Zeichen */
 // return this.reverse().spn(s);
 	return this.match(new RegExp("["+s+"]*$"))[0].length;
 }
@@ -118,7 +118,7 @@ String.prototype.rot13 = function () {
 }
 String.prototype.regExp = function(save) {
 	return this.replace(save
-		? /([\\+*?\[^\]$(){}=!<>|:\-])/g // PHP: PRCE preg_quote  =!<> dürften in JS unerheblich sein, / wird von new RegExp() maskiert
+		? /([\\+*?\[^\]$(){}=!<>|:\-])/g // PHP: PRCE preg_quote  =!<> dÃ¼rften in JS unerheblich sein, / wird von new RegExp() maskiert
 		: /([{}()[\]\\.?*+^$|=!:~-])/g //-> {}()[\]\\.?*+^$|=!:~- // Bergi
 		/*/([.*+?^=!:${}()|[\]\/\\])/g   -> {}()[\]\\.?*+^$|=!:\/ // Prototype 1.7
 		  /([-.*+?^${}()|[\]\/\\])/g     -> {}()[\]\\.?*+^$|-     // MooTools

@@ -1,4 +1,4 @@
-/* SOME WORKAROUND FUNCTIONS - MOSTLY OF JAVASCRIPT 1.8.5 */
+ï»¿/* SOME WORKAROUND FUNCTIONS - MOSTLY OF JAVASCRIPT 1.8.5 */
 // see also https://github.com/kriskowal/es5-shim/blob/master/es5-shim.js
 /* Ordered by: Function, Object, Array, String, Number, Boolean, RegExp, Date */
 
@@ -62,17 +62,17 @@ if (!Object.defineProperties) Object.defineProperties = function definePropertie
 // Object.getOwnPropertyDescriptor
 /* Returns a property descriptor for a named property on an object. */
 
-if (!Object.keys) Object.keys = function keys(o, e) { // e not standard
-/* Returns an array of all enumerable properties on an object. */
-/* get: Objekt[, auch Prototypenschlüssel zurückgeben]
-return: Array mit den objekteigenen Schlüsseln */
+if (!Object.keys) Object.keys = function keys(o, e) {
+/* Returns an Array of all enumerable propreties on an object */
+/* get: Object[, auch PrototypenschlÃ¼ssel zurÃ¼ckgeben]
+return: Array mit den objekteigenen SchlÃ¼sseln */
 	if (o !== Object(o))
 		throw new TypeError('Object.keys called on non-object');
-	var ret=[], p;
-	for (p in o)
-		if (e || Object.prototype.hasOwnProperty.call(o, p))
-			ret.push(p);
-	return ret;
+	var p = [], k;
+	for (k in o)
+		if (e || Object.prototype.hasOwnProperty.call(o, k))
+			p.push(k);
+	return k;
 };
 
 // Object.getOwnPropertyNames

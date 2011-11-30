@@ -1,4 +1,4 @@
-Number.prototype.mod = Number.prototype.modulo = function modulo(m) {
+﻿Number.prototype.mod = Number.prototype.modulo = function modulo(m) {
 // returns this mod m: normalizes this to [0, m[
 // JavaScripts % operator normalizes to ]-m, m[ !
 	var n = this % m;

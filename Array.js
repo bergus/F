@@ -1,5 +1,5 @@
-Array.toArray = Array.from = function(o) {
-/* get: array-ähnliches Objekt mit Länge "length" und ggf. Einträgen
+ï»¿Array.toArray = Array.from = function(o) {
+/* get: array-Ã¤hnliches Objekt mit LÃ¤nge "length" und ggf. EintrÃ¤gen
 return: echtes Array */
 	if (! o)
 		return []; // new Array()
@@ -19,9 +19,9 @@ return: echtes Array */
 
 Array.kartesischesProdukt = Array.cartesian = function cartesian() {
 /* get: Array, Array[, ...]
-return: (multiples) kartesisches Produkt der übergebenen Arrays,
-			sprich ein Array mit allen Arrays, die jeweils die Zahl der übergebenen Arrays als Länge haben und deren Werte eine Kombination aus Werten der übergebenen Arrays darstellen
-			die Reihenfolge wird dabei nicht verändert, d.h. der 5. Wert eines Ergebnisarrays stammt aus dem 5. übergebenen Array
+return: (multiples) kartesisches Produkt der Ã¼bergebenen Arrays,
+			sprich ein Array mit allen Arrays, die jeweils die Zahl der Ã¼bergebenen Arrays als LÃ¤nge haben und deren Werte eine Kombination aus Werten der Ã¼bergebenen Arrays darstellen
+			die Reihenfolge wird dabei nicht verÃ¤ndert, d.h. der 5. Wert eines Ergebnisarrays stammt aus dem 5. Ã¼bergebenen Array
 			Bsp: Array.kartesisches Produkt([1,2],[3,4,5])==[[1,3],[1,4],[1,5],[2,3],[2,4],[2,5]] */
 	var r = [], arg = arguments, max = arg.length-1;
 	function helper(arr, i) {
@@ -39,8 +39,8 @@ return: (multiples) kartesisches Produkt der übergebenen Arrays,
 };
 Array.potenzMenge = Array.power = function power(a) { // This is not a prototype function, even if it takes only one argument!
 /* get: Array a
-		natürlich ist diese Implementation nicht unbedingt performant (a wird a.length mal durchlaufen, ebenso das kartesische Produkt aus a.length zweistelligen Arrays), aber elegant :-)
-return: Array mit allen möglichen Untermengen von a (alle Arrays, deren Elemente in a enthalten sind) */
+		natÃ¼rlich ist diese Implementation nicht unbedingt performant (a wird a.length mal durchlaufen, ebenso das kartesische Produkt aus a.length zweistelligen Arrays), aber elegant :-)
+return: Array mit allen mÃ¶glichen Untermengen von a (alle Arrays, deren Elemente in a enthalten sind) */
 	return Array.cartesian.apply(null, Array.build(a.length, [true, false])).map(function(set) {
 		return a.filter(function(v, i){return set[i];}); // each set is an Array of boolean values
 	});
@@ -85,7 +85,7 @@ Array.prototype.merge = function merge(a) {
     return this.concat(nodupl);
 };
 
-Array.prototype.uniqueMerge = function uniqueMerge(a, /*key, fn*/) {
+Array.prototype.uniqueMerge = function uniqueMerge(a/*, key, fn*/) {
 	if (!Array.isArray(this))
 		throw new TypeError("Array.prototype.uniqueMerge must be called on an Array");
 	var al = arguments.length, test, fn, key;
@@ -211,7 +211,7 @@ Object.extend(Array.prototype, {
 if (!Array.prototype.toObject) Array.prototype.toObject = function(fn, context) {
 /* get: function(map, value, index, array)[, context]
 		inspiriert von [...].reduce(function(map, value, index, array){ return Object.set(map, "...", ...); }, {});
-		jetzt einfach  [...].toObject(function(map, ...              ){ map["..."] = ...; }); // return-Wert fällt weg
+		jetzt einfach  [...].toObject(function(map, ...              ){ map["..."] = ...; }); // return-Wert fÃ¤llt weg
 return: new Object with setted keys and values */
 	var map = {};
 	this.forEach(fn.curry(map), context);
@@ -219,8 +219,8 @@ return: new Object with setted keys and values */
 };
 
 Array.prototype.mapToObject = function(f, col) {
-/* get: [function(Wert, Index, ganzes Array)returns Objekt mit key und value][, Kollisionsfunktion wie bei Object.extend für gleiche Schlüssel]
-return: Object mit den zurückgegebenen Schlüsseln und Werten */
+/* get: [function(Wert, Index, ganzes Array)returns Objekt mit key und value][, Kollisionsfunktion wie bei Object.extend fÃ¼r gleiche SchlÃ¼ssel]
+return: Object mit den zurÃ¼ckgegebenen SchlÃ¼sseln und Werten */
 	if (typeof f != "function")
 		f = function(val, index, array) {
 			var o = {};
@@ -283,7 +283,7 @@ Array.prototype.splitBy = function(per) {
 } */
 
 Object.keys(Array.prototype).concat(
-	["concat", "join", "slice"/*, "toString",*/ "indexOf", "lastIndexOf"]
+	["concat", "join", "slice"/*, "toString"*/, "indexOf", "lastIndexOf"]
 ).concat(
 	["filter", "forEach", "every", "map", "some", "reduce", "reduceRight"]
 ).forEach(function(method) {

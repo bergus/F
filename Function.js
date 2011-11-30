@@ -1,4 +1,4 @@
-/* Look into hocf.html for more information */
+﻿/* Look into hocf.html for more information */
 
 Function.prototype.callarg = function(context/*, arg1, ...*/) {
 	var fn = this,
@@ -25,7 +25,7 @@ Function.prototype.argwith = function(/*arg1, ...*/) {
 Function.prototype.argcall = function(/*arg1, ...*/) {
 	var fn = this,
 		args = Array.prototype.slice.call(arguments);
-	return function(context, /*argM, ...*/) {
+	return function(context/*, argM, ...*/) {
 		return fn.apply(context, arsg.concat(Array.prototype.slice.call(arguments, 1)));
 	};
 }
@@ -34,7 +34,7 @@ Function.prototype.argcall = function(/*arg1, ...*/) {
 
 } */
 
-Function.prototype.arg = function(/*arg1, ...*/)) {
+Function.prototype.arg = function(/*arg1, ...*/) {
 	var fn = this,
 		args = arguments;
 	return function() {
@@ -52,7 +52,7 @@ Function.prototype.pcall = Function.prototype.partial = function() {
 	};
 }
 
-Object.keys(Function.prototype).concat(["bind"]).forEach(function(method) {
+if (Object.keys) Object.keys(Function.prototype).concat(["bind"]).forEach(function(method) {
 	Function[method] = function(fn) {
 		if (typeof fn == "function")
 			return Function.prototype.bind.apply(Function.prototype[method], arguments);
@@ -80,6 +80,14 @@ Function.prototype.xPcall = function xCurry(/*arg1, undefined, arg3, ...*/) {
 
 };
 
+
+Function.prototype.result = function result(r) {
+	var fn = this;
+	return function() {
+		fn.apply(this, Array.prototype.slice.call(arguments, 0));
+		return r;
+	};
+}
 
 
 Function.prototype.fn = function(ag, pre) {
