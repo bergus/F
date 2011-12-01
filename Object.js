@@ -108,9 +108,12 @@ return: Array mit den jeweils zurückgegebenen Werten */
 			return function(o) {return toArray(o, f);};
 		else
 			throw new TypeError('Object.toArray called on non-object');
-	return Object.keys(o).map( function(key) {
-		return f(key, o[key]);
-	});
+	// return Object.keys(o).map( function(key) { return f(key, o[key]); });
+	var ret=[], p;
+	for (p in o)
+		if (Object.prototype.hasOwnProperty.call(o, p))
+			ret.push(f(p, o[p]));
+	return ret;
 };
 
 if(!Object.join) Object.join = function join(o, j, f) {

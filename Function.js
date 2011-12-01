@@ -38,7 +38,7 @@ Function.prototype.arg = function(/*arg1, ...*/) {
 	var fn = this,
 		args = arguments;
 	return function() {
-		return fn.apply(this, arg);
+		return fn.apply(this, args);
 	};
 }
 
@@ -48,11 +48,11 @@ Function.prototype.pcall = Function.prototype.partial = function() {
 	var fn = this,
 		args = Array.prototype.slice.call(arguments);
 	return function(/*argM, ...*/) {
-		return fn.apply(this, arsg.concat(Array.prototype.slice.call(arguments)));
+		return fn.apply(this, args.concat(Array.prototype.slice.call(arguments)));
 	};
 }
 
-if (Object.keys) Object.keys(Function.prototype).concat(["bind"]).forEach(function(method) {
+Object.keys(Function.prototype).concat(["bind"]).forEach(function(method) {
 	Function[method] = function(fn) {
 		if (typeof fn == "function")
 			return Function.prototype.bind.apply(Function.prototype[method], arguments);
@@ -76,7 +76,18 @@ Function.prototype.xBind = function xBind(context/*, arg1, undefined, arg3, ...*
 
 };
 
-Function.prototype.xPcall = function xCurry(/*arg1, undefined, arg3, ...*/) {
+Function.prototype.xPcall = function xPcall(/*arg1, undefined, arg3, ...*/) {
+
+};
+
+Function.prototype.xCurry = function xCurry(length, context) {
+	if (typeof this != "function")
+		throw new TypeError();
+	if (typeof length != "number") {
+		if (typeof context == "undefined")
+			context = length;
+		length = this.length; // arguments.caller.length - Anzahl von entgegengenommen Argumenten
+	}
 
 };
 
@@ -84,24 +95,16 @@ Function.prototype.xPcall = function xCurry(/*arg1, undefined, arg3, ...*/) {
 Function.prototype.result = function result(r) {
 	var fn = this;
 	return function() {
-		fn.apply(this, Array.prototype.slice.call(arguments, 0));
+		fn.apply(this, arguments);
 		return r;
 	};
 }
 
-
-Function.prototype.fn = function(ag, pre) {
-	if (! (ag instanceof Array)) ag = [ag];
+Function.prototype.bool = function(real) {
+/* get: boolean real: whether the result should be returned as it is or get inverted
+return: the functions result converted to boolean, optionally inverted */
 	var fn = this;
-	var cal = arguments.callee.caller;
-	return function() { if (pre) pre.apply(cal, arguments); return fn.apply(cal, ag); };
-}
-Function.prototype.bool = function(wahr) {
-	var fn = this;
-	return function() { return ! (wahr ^ fn.apply(null, arguments)); };
-}
-Function.prototype.arg = function() {
-	var fn = this,
-		arg = Array.prototype.slice.call(arguments, 0);
-	return function() { return fn.apply(null, arg); };
+	return function() {
+		return ! (real ^ fn.apply(this, arguments));
+	};
 }

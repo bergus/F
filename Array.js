@@ -63,19 +63,6 @@ Array.build = function(times, fn, context) {
 	return ret;
 };
 
-/* Array.prototype.contains = function(el, fn) {
-	if (typeof fn == "function") {
-		for (var i=0;i<this.length;i++)
-			if (fn(this[i], el) )
-				return true;
-	} else {
-		for (var i=0;i<this.length;i++)
-			if (this[i] === el)
-				return true;
-	}
-	return false;
-};*/
-
 Array.prototype.merge = function merge(a) {
     for ( var nodupl = [], i = 0, l = a.length; i<l; i++ )
         if ( this.indexOf(a[i]) === -1 )
@@ -259,6 +246,25 @@ Array.prototype.flattened = function flattened(level) {
 		return a;
 	}, []);
 };
+
+/* Array.prototype.contains = function(el, fn) {
+	if (typeof fn == "function") {
+		for (var i=0;i<this.length;i++)
+			if (fn(this[i], el) )
+				return true;
+	} else {
+		for (var i=0;i<this.length;i++)
+			if (this[i] === el)
+				return true;
+	}
+	return false;
+};*/
+Array.prototype.contains = function contains(item, test) {
+	return typeof test == "function"
+		? this.some(function(v){return test(v, item);})
+		: this.indexOf(item) != -1;
+};
+
 /* noch zu bearbeiten
 Array.prototype.getHexRGB = function() {
 	if (this.length != 3) return "";
@@ -274,21 +280,29 @@ Array.prototype.trimright = function() {
 };
 Array.prototype.trim = function() {
 	return this.trimleft().trimright();
-};
+};*/
+
 Array.prototype.splitBy = function(per) {
 	var r = [];
 	for (var i=0; i<this.length; i+=per)
-		r.push(this.slice(0, per));
+		r.push(this.slice(i, per));
 	return r;
-} */
+} 
 
 Object.keys(Array.prototype).concat(
 	["concat", "join", "slice"/*, "toString"*/, "indexOf", "lastIndexOf"]
 ).concat(
 	["filter", "forEach", "every", "map", "some", "reduce", "reduceRight"]
 ).forEach(function(method) {
-	Array[method] = Function.prototype.argwith.bind(Array.prototype[method]);
+	Array['get'+method.charAt(0).toUpperCase()+method.substr(1)] = Function.prototype.argwith.bind(Array.prototype[method]);
+	Array[method] = Array.prototype[method].methodize();
 });
+/* Mootools: Native.genericize = function(object, property, check){
+	if ((!check || !object[property]) && typeof object.prototype[property] == 'function') object[property] = function(){
+		var args = Array.prototype.slice.call(arguments);
+		return object.prototype[property].apply(args.shift(), args);
+	};
+};*/
 
 Array.prototype.min = function min(){
 	return Math.min.apply(null, this);
