@@ -18,7 +18,7 @@ Function.prototype.argwith = function(/*arg1, ...*/) {
 	var fn = this,
 		args = arguments;
 	return function(context) {
-		return fn.apply(context, arg);
+		return fn.apply(context, args);
 	};
 }
 

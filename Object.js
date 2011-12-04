@@ -28,18 +28,17 @@ if (!Object.extend) Object.extend = function extend(o, q, d, col) {
 return: erweitertes Objekt */
 	if (o !== Object(o) || q !== Object(q))
 		throw new TypeError('Object.extend called on non-object');
-	var p, s, g;
+	var p, des;
 	for (p in q) {
 		if (Object.prototype.hasOwnProperty.call(q, p)) {
 			if (typeof col=="function" && Object.prototype.hasOwnProperty.call(o, p)) {
 				o[p] = col(p, o[p], q[p], o, q);
 			} else {
-				if (g = Object.prototype.__lookupGetter__.call(q, p))
-					Object.prototype.__defineGetter__.call(o, p, g);
-				if (s = Object.prototype.__lookupSetter__.call(q, p))
-					Object.prototype.__defineSetter__.call(o, p, g);
-				if (!s && !g)
-					o[p] = d ? Object.clone(q[p], d) : q[p];
+				des = Object.getOwnPropertyDescriptor(q, p);
+				if (des.value)
+					o[p] = d ? Object.clone(des.value, d) : des.value;
+				else
+					Object.defineProperty(o, p, des);
 			}
 		}
 	}

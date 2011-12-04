@@ -128,10 +128,12 @@ Array.prototype.removeDuplicates = function(test) {
 	return dupl;
 };
 
-Array.prototype.erase = function(item) {
+Array.prototype.erase = function erase(item) {
 	var i = 0;
 	while ((i = this.indexOf(item, i)) > -1)
 		this.splice(i--, 1);
+	if (arguments.length > 1)
+		return erase.apply(this, Array.prototype.slice.call(arguments, 1));
 	return this;
 };
 
@@ -290,19 +292,15 @@ Array.prototype.splitBy = function(per) {
 } 
 
 Object.keys(Array.prototype).concat(
-	["concat", "join", "slice"/*, "toString"*/, "indexOf", "lastIndexOf"]
-).concat(
+	["sort", "reverse"],
+	["concat", "join", "slice"/*, "toString"*/, "indexOf", "lastIndexOf"],
 	["filter", "forEach", "every", "map", "some", "reduce", "reduceRight"]
 ).forEach(function(method) {
+	if (typeof Array.prototype[method] != "function") // last, first, whatever
+		return;
 	Array['get'+method.charAt(0).toUpperCase()+method.substr(1)] = Function.prototype.argwith.bind(Array.prototype[method]);
-	Array[method] = Array.prototype[method].methodize();
+	Array[method] = Array.prototype[method].methodize(); // Mootools compatibility
 });
-/* Mootools: Native.genericize = function(object, property, check){
-	if ((!check || !object[property]) && typeof object.prototype[property] == 'function') object[property] = function(){
-		var args = Array.prototype.slice.call(arguments);
-		return object.prototype[property].apply(args.shift(), args);
-	};
-};*/
 
 Array.prototype.min = function min(){
 	return Math.min.apply(null, this);

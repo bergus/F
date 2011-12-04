@@ -59,8 +59,32 @@ if (!Object.defineProperties) Object.defineProperties = function definePropertie
 	return obj;
 };
 
-// Object.getOwnPropertyDescriptor
+if (!Object.getOwnPropertyDescriptor) Object.getOwnPropertyDescriptor = Object.prototype.__lookupGetter__ // Object.extend relies on this, and should work also in a non-getter/setter-environment
+	? function getOwnPropertyDescriptor(obj, prop) {
 /* Returns a property descriptor for a named property on an object. */
+		var des = {
+			configurable: true,
+			enumerable: true // Object.keys(obj).contains(prop)
+		}
+		var g = Object.prototype.__lookupGetter__.call(obj, prop),
+			s = Object.prototype.__lookupSetter__.call(obj, prop);
+		if (g || s) {
+			des.get = g;
+			des.set = s;
+		} else {
+			des.value = obj[prop];
+			des.writable = true;
+		}
+		return des;
+	}
+	: function getOwnPropertyDescriptor(obj, prop) {
+		return {
+			value: obj[prop],
+			writable: true,
+			configurable: true,
+			enumerable: true // Object.keys(obj).contains(prop)
+		}
+	};
 
 if (!Object.keys) Object.keys = function keys(o, e) {
 /* Returns an Array of all enumerable propreties on an object */
