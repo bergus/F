@@ -1,5 +1,5 @@
 ﻿/* SOME WORKAROUND FUNCTIONS - MOSTLY OF JAVASCRIPT 1.8.5 */
-// see also https://github.com/kriskowal/es5-shim/blob/master/es5-shim.js
+// see also kriskowal's es5-shim.js
 /* Ordered by: Function, Object, Array, String, Number, Boolean, RegExp, Date */
 
 if (!Function.prototype.bind) Function.prototype.bind = function bind(context) {
