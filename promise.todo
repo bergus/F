@@ -1,0 +1,65 @@
+/* OPEN ISSUES
+* if a promise is already fulfilled, you can add on*-Handlers which will never be called
+** call handlers when adding them to fulfilled promises? What about restartables then?
+** public getState function?
+* What happens to a stopped multiple promise, which gets started with a new parameter?
+* multiple promises getting ended with different types while beeing stopped are not correctly restarted!
+* conventions for errors: Must be multiple callback?
+* dann-Promises have no chance to receive messages from wenn. Any need for that?
+* implement a get(prop) function. ridicoulus approach?
+* abort dann in error case / abort sonst in sucess case ???
+			// wenn.onError(dann.abort) ???
+			// wenn.onSucess(sonst.abort) ???
+* .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
+* .syncThen(function(a, b,c){ return [...no error...]}) == .filter(function([a, b, c]){ return [Array]})
+* var x = new Promise(function(p){return prompt(p);}); x.then(x).start("Endlosschleife!");
+*/
+
+
+// 3 Promise-Funktionen sind wichtig und beschreibbar:
+// * chain / Verkettung -> Nacheinander, mit Option was ein Error (jeglicher Art) auslösen soll (returnError | nextPromise | defaultError (spezialError) -> Kontinue after Error ...)
+// * merge / Vereinigung -> Parallelität, mit Option ob All-/Existenzquantor für Error-/Sucess-return gilt
+// * endlicher Automat: -> Menge der Zustände (mit Start- und Endzustand), Ablaufrelationen, defaultSucess, defaultError
+
+// message-Konzept ausarbeiten (Kettendurchlauf?)
+// Start-Stop-Konzept ausarbeiten
+// insbesondere bei Verzweigungen nur eigene Zweige anhalten? Implementation im endlichen Automaten?
+
+// Ein bestimmtes Promise ist bereits vorhanden. Was soll darufhin ausgeführt werden?
+// * einfache Funktion - ohne Promise-Rückgabe  => onSucess, onError, onFinal
+// * synchrone "Filter"-Funktion - neues Promise | unstoppbar
+// * synchroner Filter oder Funktion mit callback - neues Promise | möglichst stoppbar
+// * synchroner Filter oder Rückgabe Promise - neues Promise | möglichst stoppbar
+// * Funktion mit callback - neues Promise | stoppbar ?
+// * weiteres Promise - neues Promise (Chain?) | auf alle Fälle stoppbar
+
+/* TEST SCRIPT FOR STOP-GO PROMISES */
+var ldebug = function(m) { var t = document.getElementById("IO"); t.value += "\n"+m; t.scrollTop = t.scrollHeight-t.clientHeight; };
+
+var f = function f(p, s, e, m) {
+ ldebug("getting "+[].join.call(p, ", "));
+ var t = Number(p[0])*1000;
+ setTimeout(function(){
+  var r = Math.round(Math.random()*p[1]);
+  ldebug("after "+t+"ms sucessing "+r+" of "+p[1]);  
+  s(r, p[1]);
+ }, t);
+};
+var p = new Promise(f).then(function endless(p){
+ return new Promise(f).then(endless).arg(p);
+});
+p.onFinal(function(a, b){
+ ldebug("after "+a+" seconds returning "+b);
+});
+var s = p.start(5, 10);
+var time = setTimeout(function x(){
+ ldebug(s.name || s);
+ s = s();
+ time = setTimeout(x, 4*1000);
+}, 4*1000);
+setTimeout(function(){
+ p.stop(); clearTimeout(time);
+ p.abort();
+ ldebug(p);
+}, 50*1000);
+return "";
