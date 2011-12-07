@@ -1,17 +1,25 @@
-﻿window.Promise = function Promise(fn, multiple) {
+﻿window.Promise = function Promise(fn, multiple, descriptor) {
 /* get: function callback(Array arguments, Function onsucess, Function onerror[, Function onmessage])[, 0/false: only once | 1/true: restartable | 2: multiple (cloneable)]
 return: a Promise to call all added Listeners when fn returns a result after invoking start()
 		ein Versprechen, alle angefügten Listener aufzurufen, wenn nach dem Aufruf von start() Ergebnisse von fn zurückkomen */
-	if (fn instanceof Promise)
+	if (fn instanceof Promise) // true also for Streams
 		return fn;
-	if (fn instanceof Promise.Stream)
-		return fn.promise;
 	if (typeof fn != "function")
 		throw new TypeError("(new) Promise must be called with a function as the argument");
+	if (typeof descriptor != "function")
+		descriptor = function() {
+			var name = fn.name || "<anonymus>";
+			if (wenn)
+				return name + " -> "+wenn.toString().split("\n").join("\n\t");
+			return name;
+		};
+	multiple = Number(multiple) || 0;
+	if (multiple < 0) // nicht [0,1,2].contains(multiple) // multiple == 1.5 -> not multiple but coneable
+		multiple = 0;
 	var that = this,
+		ended = false, // → "sucess"/"error"/… → true
 		stopped = false, // ↔ true, solange ended!==true
 		// Wäre es evtl besser, mit stopped anzufangen? So können von Anderen ausgelöste Handler (???) abgefangen werden, zumindest vor dem Starten.
-		ended = false, // → "sucess"/"error"/… → true
 		wenn = null,
 		stopp = null,
 		go = null,
@@ -28,9 +36,6 @@ return: a Promise to call all added Listeners when fn returns a result after inv
 			message: [],
 			abort: []
 		};
-	multiple = Number(multiple) || 0;
-	if (multiple < 0) // nicht [0,1,2].contains(multiple) // multiple == 1.5 -> not multiple but coneable
-		multiple = 0;
 
 	function end(result, type) {
 //console.debug(this);
@@ -95,20 +100,26 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 	}
 
 	this.start = function startPromise(p) {
+/* get: Parameters[, Parameters...]
+return: - true when already running
+		- false when ended and if not restartable
+		- a stop/go-function for fn, if available
+		- a stop/go-function for this promise not get resolved */
 		var params = [].slice.call(arguments, 0);
 		if (ended === true) {
 			if (multiple > 0) {
 				ended = false;
+				wenn = null;
+				stopp = null;
+				go = null;
 				// cache ???
 			} else
 				return false; // restart verhindern
 		}
 		if (stopp) // fn/wenn läuft bereits
-			return false;
+			return true;
 
 		var erg = fn(arguments.length > 1 ? params : p, sucessCallback, errorCallback, messageCallback);
-		if (erg instanceof that.constructor.Stream)
-			erg = erg.promise;
 		if (erg instanceof that.constructor) { // ermöglicht "REKURSION"
 			wenn = erg;
 			wenn.onSucess(sucessCallback);
@@ -136,6 +147,9 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 		return stopp;
 	};
 	this.stop = function stopPromise() {
+/* makes the promise unresolvable by caching the callback result, tries to stop fn if possible
+return: - false if already ended
+		- the promises go function elsewhile (even if stopped already) */
 		if (ended === true)
 			return false;
 		if (!stopped) {
@@ -147,15 +161,18 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 		return that.go;
 	};
 	this.go = function goPromise() {
+/* makes the promise resolvable again, ending it if result already arrived (is cached), and tries to run fn if possible
+return: - false if already ended
+		- the promises stop function elsewhile (even if running already) */
 		if (ended === true)
 			return false;
 		if (stopped) {
 			stopped = false;
-			if (ended) // sucess or error state, cached result
-				return end(cache, ended);
 //console.log("promise going on");
 			if (typeof go == "function")
-				stopp = go();
+				stopp = go() || true; // stopp indicates running
+			if (ended) // sucess or error state, cached result
+				return end(cache, ended);
 		}
 		return that.stop;
 	};
@@ -177,16 +194,13 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 		return this;
 	};
 	this.filter = function(what, fn) {
-		if (["sucess","error","message","abort"].indexOf(what) == -1)
+		if (! ["sucess","error","message","abort"].contains(what))
 			throw new RangeError("Promise.filter only can filter 'sucess', 'error', 'message' and 'abort', not "+what);
 		Array.prototype.push.apply(filter[what], Array.prototype.slice.call(arguments, 1));
 		return this;
 	};
 	this.toString = function stringOfPromise() {
-		return "[Promise\nstart: " + (fn.name || "<anonymus>") + (wenn
-			? " -> "+wenn.toString().split("\n").join("\n\t")+"\n"
-			: "\n"
-		)+Object.join(on, "", function(key, value) {
+		return "[Promise\nstart: " + descriptor().indent() + "\n" + Object.join(on, "", function(key, value) {
 			return value.length ? key+"handler: "+value.map( function(h) {
 				return (typeof h == "function"
 					? h.name || "<anonymus>"
@@ -198,8 +212,8 @@ console.assert(res instanceof Array, "Promise|messageCallback: result ist weder 
 	this.abort = function abortPromise() {
 // does not everything you might think of:
 // * Does NOT stop anything
-// * Does NOT prohibit multiple end callbacks
-		return end(undefined, "abort"); // undefined does not call any handlers than final (but could be filtered to do so)
+// * Does NOT prohibit multiple end callbacks (when restarted)
+		return end(undefined, "abort"); // undefined does not call any handlers than final (if filtered there are no, so will throw error)
 	};
 	if (multiple > 1) {
 		this.clone = function clonePromise() {
@@ -216,7 +230,7 @@ Object.extend(window.Promise.prototype, {
 			sonst = new this.constructor(sonst);
 			wenn.onError(Promise.makeErrorhandler(sonst.start));
 		}
-		return Object.set(new Promise(function(p, s, e, m) {
+		return new Promise(function(p, s, e, m) {
 			dann.onSucess(s);
 			dann.onError(e);
 			dann.onMessage(m);
@@ -233,14 +247,21 @@ Object.extend(window.Promise.prototype, {
 			if (!stopp)
 				return false;
 			return function stopChainedPromise() {
+/* tries to stop wenn (even wenns fn, if available), dann and - in case - sonst
+return: - false when nothing could get stopped, i.e. when all three are already finished
+		- a go function elsewhile */
 				var go;
-				if (typeof stopp == "function")
+				if (typeof stopp == "function") // might be boolean also
 					go = stopp();
 				else
 					go = wenn.stop(); // nur zur Sicherheit
 				if (!dann.stop() & (sonst && !sonst.stop()) && !go) // binary AND und normal AND, sic!
 					return false;
 				return function goChainedPromise() {
+/* tries to run wenn (even wenns fn, if available), dann and - in case - sonst
+	!!! Will make dann (and sonst) go even if wenn hasn't finished yet - it doesn't change anything in resolving (aside from specially filtered dann/sonst tasks, expected to get restarted)
+return: - false when nothing could made go, i.e. when all three are already finished
+		- a stop function elsewhile */
 					if (typeof go == "function")
 						stopp = go();
 					else
@@ -250,12 +271,10 @@ Object.extend(window.Promise.prototype, {
 					return stopChainedPromise;
 				};
 			};
-		}), "toString", function stringOfChainedPromise() {
-			return "[Promise"
-			+ "\nwenn: " + wenn.toString().split("\n").join("\n\t")
+		}, 0, function() {
+			return "\nwenn: " + wenn.toString().split("\n").join("\n\t")
 			+ "\ndann: " + dann.toString().split("\n").join("\n\t")
-			+ "\nsonst: " + (sonst ? sonst.toString().split("\n").join("\n\t") : "nichts")
-			+ "\n]";
+			+ (sonst ? "\nsonst: " + sonst.toString().split("\n").join("\n\t") : "");
 		});
 	},
 	syncThen: function(fn, context) {
@@ -273,20 +292,20 @@ Object.extend(window.Promise.prototype, {
 			wenn.onMessage(m); // forwarding
 
 			return wenn.start(p);
+		}, 0, function() {
+			return wenn.toString()+" -> "+(fn.name || "<anonymus>");
 		});
 	},
 	arg: function arg(p) {
 // something like detaching
 		var that = this,
 			args = arguments;
-		return Object.set(new Promise(function(p, s, e, m) {
+		return new Promise(function(p, s, e, m) {
 			that.onSucess(s);
 			that.onError(e);
 			that.onMessage(m);
 			return that.start.apply(null, args);
-		}), "toString", function argumentedPromiseToString(){
-			return that.toString();
-		});
+		}, 0, that.toString);
 	},
 	detachThen: function(fn) {
 // fn won't be called with any parameters given to start
@@ -308,20 +327,36 @@ Object.extend(window.Promise.prototype, {
 			sonst.onError(e);
 			sonst.onMessage(m);
 
-			if(!wenn.start(p))
+			var stopp = wenn.start(p);
+			if (!stopp)
 				return false;
-			return function stop() {
-				var start;
-				if ((start = wenn.stop()) || (start = sonst.stop()))
-					return start.result(stop);
-				return false;
+			return function stopCorrectPromise() {
+				var go;
+				if (typeof stopp == "function") // might be boolean also
+					go = stopp();
+				else
+					go = wenn.stop(); // nur zur Sicherheit
+				if (!sonst.stop() && !go)
+					return false;
+				return function goCorrectPromise() {
+					if (typeof go == "function")
+						stopp = go();
+					else
+						stopp = wenn.go(); // nur zur Sicherheit
+					if (sonst.go() && !stopp)
+						return false;
+					return stopCorrectPromise;
+				};
 			};
+		}, 0, function() {
+			return "\nwenn nicht: " + wenn.toString().split("\n").join("\n\t")
+			+ "\ndann: " + sonst.toString().split("\n").join("\n\t");
 		});
 	},
 	cache: function(cacheError) {
 /* get: boolean whether errors should be cached - otherwise a new try is possible
 		Achtung! gibt für unterschiedliche start-Parameter denselben Rückgabewert!
-return: a restartable (not multiple) Promise which calls this only once to get */
+return: a restartable, cloneable Promise which calls this only once */
 		var that = this;
 		var c, ec;
 		return new Promise(function(p, s, e, m) {
@@ -341,7 +376,9 @@ return: a restartable (not multiple) Promise which calls this only once to get *
 			that.onMessage(m);
 
 			return that.start(p);
-		}, true);
+		}, 2, function() {
+			return that.toString().splice(1,0,"cached ");
+		});
 	},
 	branch: function() {
 	// neues Promise, das aber von der Ausführungsreihenfolge abgekoppelt ist (wird nur erfüllt, wenn es _selbst_ gestartet wurde)
@@ -367,6 +404,16 @@ Object.extend(window.Promise, {
 			return fn.call(context || null, error);
 		};
 	},
+	Error: Object.set(function PromiseError(m, d, r, o, ro) {
+		this.name = "PromiseError";
+		this.message = m;
+		this.details = d;
+		this.result = r;
+		if (o instanceof Error)
+			o = ro;
+		if (o)
+			this.origin = o;
+	}, "prototype", Error.prototype),
 	when: function(p, dann, sonst) {
 		return p.then(dann, sonst);
 	},
@@ -374,7 +421,7 @@ Object.extend(window.Promise, {
 // see also Promise.prototype.defer
 		if (typeof ms != "number")
 			throw new TypeError("Promise.defer: ms must be a number, not a "+typeof ms);
-		return new Promise(function(p, s) {
+		return new Promise(function timeout(p, s) {
 			setTimeout(function() {
 				s[Array.isArray(p) ? "apply" : "call"](null, p);
 			}, ms);
@@ -435,79 +482,66 @@ console.debug("Promise.merge",promises);
 		});
 	}
 });
-window.Promise.Stream = function PromiseStream(fn) {
+window.Promise.Stream = window.Stream = function Stream(fn) {
 /* get: function(params, callback, e, m)
 		jeder callback(item) löst ein item-Event aus, callback(undefined) bedeutet Ende des Streams (sucess)
-return: a Stream Object:
-		* promise: a Promise to end the stream (with messages and error state)
-		* each(): append listener function(s) for the item-Event
-		* start() / stop(): do what they say
-Example (sinnfrei, da kein Ende oder Fehler abzusehen):
-		interval = new Promise.Stream( function(p, s) {
-			var id = window.setInterval(function() {
-				s(Date.now());
-			}, p[0]);
-			return window.clearInterval.bind(window, id);
-		});
+return: a Stream Object, intanceof a Promise to get completed (close stream)
 */
-	var onItem = [];
-	var items = [];
-	var counter = 0;
-	var stopped = false;
+	if (fn instanceof Stream)
+		return fn;
+	if (fn instanceof Promise)
+		return fn.stream(); // TODO
+	if (typeof fn != "function")
+		throw new TypeError("(new) Stream must be called with a function as the argument");
+		
+	var //that = this,
+		ended = false, // → "sucess" → true
+		stopped = false, // ↔ true, solange ended!==true
+		stopp = null,
+		go = null,
+		items = [], // cache
+		counter = items.length,
+		onItem = [];
+	
 	function run() {
-//console.debug("Promise.Stream|onEachItem", onItem);
-		for (; counter < items.length; counter++) {
+		if (stopped)
+			return false;
+		while (counter++ < items.length) {
 			for (var i=0; i<onItem.length; i++)
 				if (typeof onItem[i] == "function")
 					onItem[i](items[counter], counter);
 		}
 	}
-	var promise = this.promise = new Promise(function startStreamPromise(p, s, e, m) {
-		var stop = fn(p, function(item) {
+	Promise.call(this, function startStream(params, promiseSucess, promiseError, promiseMessage) {
+		function streamCallback(item) {
 			if (typeof item != "undefined") {
-//console.debug("Promise.Stream: new item", item);
 				items.push(item);
-				if (!stopped)
-					run();
+				run();
 			} else {
-console.debug("Promise.Stream: items", items);
-				s(items);
+				ended = "sucess";
+				promiseSucess(items); // even if stopped!
 			}
-		}, e, m);
-		return function stopStream() {
-			stopped = true;
-			if (typeof stop == "function")
-				var start = stop(); // fn?
-			return function startStream() {
-				stopped = false;
-				run(); // ausstehende callbacks
-				if (typeof start == "function")
-					stop = start();
-				return stopStream;
-			};
-		};
+		}
+		stopp = fn(params, streamCallback, promiseError, promiseMessage);
+		return stopp;
 	});
-	this.each = function() {
+	this.onItem = function() {
 		Array.prototype.push.apply(onItem, arguments);
 		return this;
 	};
-	this.start = function() {
-		return promise.start.apply(null, Array.prototype.slice.call(arguments, 0));
-	};
-	this.stop = function() {
-		return promise.stop();
-	};
 };
-Object.extend(window.Promise.Stream.prototype, { // some cute Array-like function, but here: asynchrounus onItem!
+window.Stream.prototype = Object.create(Promise.prototype, {
+	constructor: Stream, // needed here because we're not extending Stream.prototype
+ // some cute Array-like function, but here: asynchrounus onItem!
 	concat: function(stream) {
+		var s = [this];
 		var streams = s.concat(Array.prototype.slice.call(arguments, 0));
 		var running = streams.length;
-		return new Promise.Stream(function(p, callback, e, m) {
-			streams.forEach( function(stream) {
-				if (! stream instanceof this.constructor)
-					throw new TypeError("Promise.Stream.concat: Es dürfen nur Streams miteinander verkettet werden");
-				stream.each( callback );
-				stream.promise.onSucess(function() {
+		return new Stream(function(p, callback, e, m) {
+			streams.onItem( function(stream) {
+				if (! stream instanceof Stream)
+					throw new TypeError("Stream.concat: Es dürfen nur Streams miteinander verkettet werden");
+				stream.onItem( callback ).onSucess(function() {
 					if (--running == 0)
 						callback();
 				}).onError(e).onMessage(m);
@@ -518,34 +552,40 @@ Object.extend(window.Promise.Stream.prototype, { // some cute Array-like functio
 	filter: function(fn, context) {
 		var i = 0, s = this;
 		if (fn instanceof Promise)
-			return new Promise.Stream(function(p, callback, e, m) {
-				s.each(function asyncStreamFilter(r){
-					;//
-				}).promise.onSucess(callback.arg()).onError(e).onMessage(m).start(p);
+			return new Stream(function(p, callback, e, m) {
+				return s.onItem(function asyncStreamFilter(r, i){
+					var result = arguments;
+					fn.onSucess(function(v) {
+						if (v)
+							callback.apply(null, result);
+					});
+					if (!context) // ignoreError
+						fn.onError(e);
+					fn.onMessage(m).start.apply(null, arguments);
+				}).onSucess(callback.arg()).onError(e).onMessage(m).start(p);
 			});
-		else if (typeof fn == "function")
-			return new Promise.Stream(function(p, callback, e, m) {
-				s.each(function streamFilter(r){
-					if (fn.call(context, r, i++))
-						callback(r);
-				}).promise.onSucess(callback.arg()).onError(e).onMessage(m).start(p);
+		if (typeof fn == "function")
+			return new Stream(function(p, callback, e, m) {
+				s.onItem(function streamFilter(r, i) {
+					if (fn.apply(context || null, arguments))
+						callback.apply(null, arguments);
+				}).onSucess(callback.arg()).onError(e).onMessage(m).start(p);
 			});
-		else
-			throw new TypeError("Promise.Stream:filter must be called with either a function or a Promise");
+		throw new TypeError("Promise.Stream:filter must be called with either a function or a Promise");
 	},
-	get forEach() { return this.each },
+	get each() { return this.onItem },
+	get forEach() { return this.onItem },
 	map: function(fn, context) {
-		var i = 0, s = this;
+		var s = this;
 		if (fn instanceof Promise)
 			return this.mapPromise(fn);
-		else if (typeof fn == "function")
-			return new Promise.Stream(function(p, callback, e, m) {
-				s.each(function streamMapper(r){
-					callback(fn.call(context, r, i++));
-				}).promise.onSucess(callback.arg()).onError(e).onMessage(m).start(p);
+		if (typeof fn == "function")
+			return new Stream(function(p, callback, e, m) {
+				s.onItem(function streamMapper(r, i) {
+					callback(fn.apply(context || null, arguments));
+				}).onSucess(callback.arg()).onError(e).onMessage(m).start(p);
 			}); 
-		else
-			throw new TypeError("Promise.Stream:map must be called with either a function or a Promise");
+		throw new TypeError("Promise.Stream:map must be called with either a function or a Promise");
 	},
 	reduce: function(fn, accum, context) {
 		if (typeof fn !== "function")
@@ -556,7 +596,7 @@ Object.extend(window.Promise.Stream.prototype, { // some cute Array-like functio
 				accum = (i == 0 && typeof accum == "undefined")
 					? r
 					: fn.call(context || null, accum, r, i++);
-			}).promise.onSucess(function(){
+			}).onSucess(function(){
 				callback(accum);
 			}).onError(e).onMessage(m).start(p);
 		});

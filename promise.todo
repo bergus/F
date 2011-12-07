@@ -4,6 +4,7 @@
 ** public getState function?
 * What happens to a stopped multiple promise, which gets started with a new parameter?
 * multiple promises getting ended with different types while beeing stopped are not correctly restarted!
+* promises can get ended with different types whiel beeing stopped !!! (used for Stream)
 * conventions for errors: Must be multiple callback?
 * dann-Promises have no chance to receive messages from wenn. Any need for that?
 * implement a get(prop) function. ridicoulus approach?
@@ -63,3 +64,7 @@ setTimeout(function(){
  ldebug(p);
 }, 50*1000);
 return "";
+
+/* TEST SCRIPT FOR toString */
+function nothing(){}
+return "" + new Promise(nothing).then(nothing).cache(nothing).then(new Promise(nothing).then(nothing)).syncThen(nothing);
