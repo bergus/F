@@ -91,6 +91,14 @@ Function.prototype.xCurry = function xCurry(length, context) {
 
 };
 
+Function.prototype.methodize = function methodize(context) {
+	var fn = this;
+	return function() {
+		var args = Array.prototype.slice.call(arguments, 0);
+		args.unshift(this);
+		return fn.apply(context || null, args);
+	};
+};
 
 Function.prototype.result = function result(r) {
 	var fn = this;

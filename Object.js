@@ -99,32 +99,75 @@ Object.merge = function merge(a, b) {
 	return Object.merge.apply(null, [{}].concat(Array.prototype.slice.apply(arguments, 0)));
 }; */
 
+Object.forEach = Object.each = function each(o, f) {
+	if (typeof f != "function" && typeof (f=o) == "function")
+		return function(o) {return each(o, f);};
+	if (o !== Object(o))
+		throw new TypeError('Object.each called on non-object');
+	for (var p in o)
+		if (Object.prototype.hasOwnProperty.call(o, p))
+			f(p, o[p], o);
+	return o;
+};
+
+Object.map = function map(o, f) {
+	if (typeof f != "function" && typeof (f=o) == "function")
+		return function(o) {return map(o, f);};
+	if (o !== Object(o))
+		throw new TypeError('Object.map called on non-object');
+	var map = {};
+	for (var p in o)
+		if (Object.prototype.hasOwnProperty.call(o, p))
+			f(map, p, o[p], o);
+	return map;
+};
+
+Object.mapValues = function mapValues(o, f) {
+	if (typeof f != "function" && typeof (f=o) == "function")
+		return function(o) {return mapValues(o, f);};
+	if (o !== Object(o))
+		throw new TypeError('Object.mapValues called on non-object');
+	var map = {};
+	for (var p in o)
+		if (Object.prototype.hasOwnProperty.call(o, p))
+			map[p] = f(o[p], p, o);
+	return map;
+};
+
+Object.rename = Object.mapKeys = function mapKeys(o, f) {
+	if (typeof f != "function" && typeof (f=o) == "function")
+		return function(o) {return mapKeys(o, f);};
+	if (o !== Object(o))
+		throw new TypeError('Object.mapKeys called on non-object');
+	var map = {};
+	for (var p in o)
+		if (Object.prototype.hasOwnProperty.call(o, p))
+			map[f(p, o[p], o)] = o[p]; // Arguments: erst Key, dann Value !!!
+	return map;
+};
+
 if(!Object.toArray) Object.toArray = function toArray(o, f) {
 /* get: Objekt, funktion(Schlüssel, Eigenschaft) returns Arrayeintrag
 return: Array mit den jeweils zurückgegebenen Werten */
+	if (typeof f != "function" && typeof (f=o) == "function")
+		return function(o) {return toArray(o, f);};
 	if (o !== Object(o))
-		if (typeof (f=o) == "function")
-			return function(o) {return toArray(o, f);};
-		else
-			throw new TypeError('Object.toArray called on non-object');
-	// return Object.keys(o).map( function(key) { return f(key, o[key]); });
-	var ret=[], p;
-	for (p in o)
-		if (Object.prototype.hasOwnProperty.call(o, p))
-			ret.push(f(p, o[p]));
-	return ret;
+		throw new TypeError('Object.toArray called on non-object');
+	return Object.keys(o).map( function(key) {
+		return f(key, o[key]);
+	});
 };
 
 if(!Object.join) Object.join = function join(o, j, f) {
 /* get: Objekt, verknüpfender String[, Funktion wie bei Object.toArray]
 return: String */
-	if (typeof f != "function")
-		f = function(key, value) { return key+": "+value; }; // toString impliziert
-	if (o !== Object(o))
-		if (typeof (f=j) == "function" && typeof (j=o) == "string")
+	if (typeof f != "function") {
+		if (typeof (f=j) == "function" && typeof (j=o) != "undefined")
 			return function(o) {return join(o, j, f);};
-		else
-			throw new TypeError('Object.join called on non-object');
+		f = function(key, value) { return key+": "+value; }; // toString impliziert
+	}
+	if (o !== Object(o))
+		throw new TypeError('Object.join called on non-object');
 	return Object.toArray(o, f).join(j);
 }
 

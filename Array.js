@@ -137,7 +137,8 @@ Array.prototype.erase = function erase(item) {
 	return this;
 };
 
-Array.prototype.include = function(item, test) {
+Array.prototype.include = function include(item, test) {
+// pushes item into the array if it is not already contained
 	if (test
 		? ! this.some(function(v){return test(v, item);})
 		: this.indexOf(item) == -1
@@ -175,11 +176,20 @@ Array.prototype.clean = Array.prototype.compact = function compact() {
 	return this;
 };
 
-Array.prototype.by = function(key) {
-	return this.toObject(function(map, el) {
-		map[el[key]] = el;
-		// delete el[key];
-	});
+Array.prototype.by = function(key, mult) {
+	return this.toObject( mult
+		? function(map, el) {
+			var k = el[key];
+			if (map[k])
+				map[k].push(el);
+			else
+				map[k] = [el];
+		}
+		: function(map, el) {
+			map[el[key]] = el;
+			// delete el[key];
+		}
+	);
 };
 
 Object.extend(Array.prototype, {
@@ -203,7 +213,7 @@ if (!Array.prototype.toObject) Array.prototype.toObject = function(fn, context) 
 		jetzt einfach  [...].toObject(function(map, ...              ){ map["..."] = ...; }); // return-Wert fällt weg
 return: new Object with setted keys and values */
 	var map = {};
-	this.forEach(fn.curry(map), context);
+	this.forEach(fn.pcall(map), context);
 	return map;
 };
 
@@ -231,6 +241,36 @@ return: Object mit den zurückgegebenen Schlüsseln und Werten */
 	}, {});
 };
 
+Array.prototype.sortNumerical = function sortNumerical(ascending/*=true*/) {
+	return this.sort( ascending===false // assume ascending if not disabled (descending)
+		? function(a,b) {return b - a;}
+		: function(a,b) {return a - b;}
+	);
+};
+
+Array.prototype.sortBy = function sortBy(get, ascending) {
+	if (typeof get != "function") {
+		get = Object.get.apply(null, arguments);
+		ascending = true;
+	}
+	if (this[0] && typeof get(this[0]).valueOf() == "number")
+		return this.sort( ascending===false // assume ascending if not disabled (descending)
+			? function(a,b) {return get(b) - get(a);}
+			: function(a,b) {return get(a) - get(b);}
+		);
+	var tlc = String.prototype.toLowerCase;
+	return this.sort( ascending===false
+		? function(a, b) {
+			var sa = tlc.call(get(a)), sb = tlc.call(get(b));
+			return sa<sb ? -1 : sa>sb ? 1 : 0;
+		}
+		: function(a, b) {
+			var sa = tlc.call(get(a)), sb = tlc.call(get(b));
+			return sb<sa ? -1 : sb>sa ? 1 : 0;
+		}
+	);
+};
+
 Array.prototype.flatten = function flatten() {
 	for (var i=0; i<this.length; i++)
 		if (Array.isArray(this[i])) {
@@ -249,18 +289,6 @@ Array.prototype.flattened = function flattened(level) {
 	}, []);
 };
 
-/* Array.prototype.contains = function(el, fn) {
-	if (typeof fn == "function") {
-		for (var i=0;i<this.length;i++)
-			if (fn(this[i], el) )
-				return true;
-	} else {
-		for (var i=0;i<this.length;i++)
-			if (this[i] === el)
-				return true;
-	}
-	return false;
-};*/
 Array.prototype.contains = function contains(item, test) {
 	return typeof test == "function"
 		? this.some(function(v){return test(v, item);})

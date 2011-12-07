@@ -46,24 +46,30 @@ if (!String.prototype.trimLeft) String.prototype.trimLeft = function () {
 
 
 // Own implementations
-String.prototype.hex = function() {
+String.prototype.hex = function hex() {
 	return parseInt(this, 16);
-}
-String.prototype.dez = function() {
+};
+String.prototype.dez = function dez() {
 	alert("deprecated: String.dez!");
 	throw new Error();
 	return parseInt(this, 16);
-}
-String.prototype.padleft = function(len, cha) {
+};
+String.prototype.padleft = function padleft(len, cha) {
 	return (this.length<len)?((typeof cha=="string"?cha:" ")+this).padleft(len,cha):this.substr(0,len);
-}
-String.prototype.padright = function(len, cha) {
+};
+String.prototype.padright = function padright(len, cha) {
 	return (this.length<len)?(this+(typeof cha=="string"?cha:" ")).padright(len,cha):this.substr(0,len);
-}
-String.prototype.repeat = function(times) {
+};
+String.prototype.repeat = function repeat(times) {
 	for(var r = ""; --times >= 0; r+=this); return r;
-}
-String.prototype.splitreg = function(expr, times) {
+};
+String.prototype.indent = function indent(t, i) {
+	t = t || "\t";
+	if (typeof i == "number")
+		t = (""+t).repeat(i);
+	return t+this.split("\n").join("\n"+t);
+};
+String.prototype.splitreg = function splitreg(expr, times) {
 	var erg =[], ze, i=0;
 	if (typeof expr=='string') {
 		expr = new RegExp("(.*?)("+expr+")","g");
@@ -76,25 +82,34 @@ String.prototype.splitreg = function(expr, times) {
 	}
 	erg.input = this;
 	return erg.trim();
-}
-String.prototype.reverse = function() {
+};
+String.prototype.reverse = function reverse() {
 	return this.split("").reverse().join("");
-}
-String.prototype.spn = function(s) {
+};
+String.prototype.splice = function splice(index, length, replace) {
+	return this.substring(0, index) + Array.prototype.slice.call(arguments, 2).join("") + this.substring(index);
+};
+String.prototype.spn = function spn(s) {
 /* Ermittelt die Länge der am Anfang übereinstimmenden Zeichen, PHP: strspn() */
 	return this.match(new RegExp("^["+s+"]*"))[0].length;
-}
-String.prototype.endspn = function(s, e) {
+};
+String.prototype.endspn = function endspn(s, e) {
 /* Ermittelt die Länge der am Ende übereinstimmenden Zeichen */
 // return this.reverse().spn(s);
 	return this.match(new RegExp("["+s+"]*$"))[0].length;
-}
-String.prototype.replaceChars = function(map) {
+};
+String.prototype.startsWith = function startsWith(s) {
+	return this.substring(0, s.length) === s;
+};
+String.prototype.endsWith = function endsWith(s) {
+	return this.substr(-s.length) === s;
+};
+String.prototype.replaceChars = function replaceChars(map) {
 	var i, reg = "";
 	for (i in map)
 		reg += i;
 	return this.replace(new RegExp("["+reg.replace(/(\]|-)/,"\\$1")+"]",'g'), function(char) { return map[char]; });
-}
+};
 /* String.specialChars = {
 	'\b': "\\b",
 	'\t': "\\t",
@@ -103,10 +118,10 @@ String.prototype.replaceChars = function(map) {
 	'\r': "\\r",
 	'\\': "\\\\"
 } */
-String.prototype.ucFirst = function() {
+String.prototype.ucFirst = function ucFirst() {
 	return this.replace(/^./, function(x) { return x.toUpperCase(); });
-}
-String.prototype.rot13 = function () {
+};
+String.prototype.rot13 = function rot13() {
 	return this.replace(/[A-Za-z]/g, function(char) {
 		var code=char.charCodeAt(0);
 		if (code < 78) return String.fromCharCode(code + 13); //65-77: A-M
@@ -115,8 +130,8 @@ String.prototype.rot13 = function () {
 		return String.fromCharCode(code - 13); //110-122: n-z
 		// start + ( code - start + 13) % 26
 	});
-}
-String.prototype.regExp = function(save) {
+};
+String.prototype.regExp = function regExp(save) {
 	return this.replace(save
 		? /([\\+*?\[^\]$(){}=!<>|:\-])/g // PHP: PRCE preg_quote  =!<> dürften in JS unerheblich sein, / wird von new RegExp() maskiert
 		: /([{}()[\]\\.?*+^$|=!:~-])/g //-> {}()[\]\\.?*+^$|=!:~- // Bergi
@@ -127,15 +142,15 @@ String.prototype.regExp = function(save) {
 		  /([\\{}()|.?*+\-^$\[\]])/g     -> {}()[\]\\.?*+^$|\-    // /1.17wmf1/resources/mediawiki/mediawiki.js (kopiert von jQuery)
 		*/
 	, "\\$1");
-}
-String.prototype.mask = function(chars, maske) {
+};
+String.prototype.mask = function mask(chars, maske) {
 	return this.replace(new RegExp("(["+chars+"])","g"), (maske || "\\")+"$1"); //chars maskieren?
-}
+};
 /* STRING-PART TEST *
 var s = "abcd",
-	m = [-5,-4,-3,-2,-1,0,1,2,3,4,5];
+	m = [-5,-4,-3,-2,-1,0,1,2,3,4,5,undefined];
 return Array.kartesischesProdukt(m, m).map(function(x) {
-	return "("+x[0]+","+x[1]+"):  \t" +
+	return "("+(x[0]||"u")+","+(x[1]||"u")+"):  \t" +
 		[s.substr, s.substring, s.slice].map(function(y) {
 			return y.apply(s,x);
 		}).join("\t");
