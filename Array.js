@@ -68,7 +68,7 @@ Array.prototype.merge = function merge(a) {
         if ( this.indexOf(a[i]) === -1 )
             nodupl.push(a[i]);
 	if (arguments.length > 1)
-		return merge.apply(this.concat(nodupl), Array.prototype.slice.apply(arguments, 1));
+		return merge.apply(this.concat(nodupl), Array.prototype.slice.call(arguments, 1));
     return this.concat(nodupl);
 };
 
@@ -192,20 +192,13 @@ Array.prototype.by = function(key, mult) {
 	);
 };
 
-Object.extend(Array.prototype, {
-	get last() {
-		return this[this.length-1];
-	},
-	set last(x) {
-		this [this.length-1] = x;
-	},
-	get first() {
-		return this[0];
-	},
-	set first(x) {
-		return this[0] = x;
-	}
-});
+Array.prototype.get = function(key) {
+	if (typeof key != "string" && typeof key != "number" || arguments.length > 1)
+		return this.map(Object.get.apply(null, arguments));
+	for (var i=0, l=this.length, res = new Array(l); i<l; i++)
+		res[i] = this[i][key];
+	return res;
+};
 
 if (!Array.prototype.toObject) Array.prototype.toObject = function(fn, context) {
 /* get: function(map, value, index, array)[, context]
@@ -273,13 +266,11 @@ Array.prototype.sortBy = function sortBy(get, ascending) {
 
 Array.prototype.flatten = function flatten() {
 	for (var i=0; i<this.length; i++)
-		if (Array.isArray(this[i])) {
-			this[i].unshift(1);
-			this[i].unshift(i);
-			this.splice.apply(this, this[i]);
-		}
+		if (Array.isArray(this[i]))
+			this.splice.apply(this, [i, 1].concat(this[i]));
 	return this;
 };
+
 Array.prototype.flattened = function flattened(level) {
 	return this.reduce(function(a, v) {
 		if (Array.isArray(v) && level>0)
@@ -315,7 +306,7 @@ Array.prototype.trim = function() {
 Array.prototype.splitBy = function(per) {
 	var r = [];
 	for (var i=0; i<this.length; i+=per)
-		r.push(this.slice(i, per));
+		r.push(this.slice(i, i+per));
 	return r;
 } 
 
@@ -328,6 +319,21 @@ Object.keys(Array.prototype).concat(
 		return;
 	Array['get'+method.charAt(0).toUpperCase()+method.substr(1)] = Function.prototype.argwith.bind(Array.prototype[method]);
 	Array[method] = Array.prototype[method].methodize(); // Mootools compatibility
+});
+
+Object.extend(Array.prototype, {
+	get last() {
+		return this[this.length-1];
+	},
+	set last(x) {
+		this [this.length-1] = x;
+	},
+	get first() {
+		return this[0];
+	},
+	set first(x) {
+		return this[0] = x;
+	}
 });
 
 Array.prototype.min = function min(){

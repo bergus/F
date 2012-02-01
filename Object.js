@@ -23,26 +23,39 @@ if (!Object.clone) Object.clone = function clone(o, d) {
 	return Object.extend(n, o, d);
 };
 
-if (!Object.extend) Object.extend = function extend(o, q, d, col) {
-/* get: zu erweiterndes Objekt (Funktion, etc), Quellobjekt mit den Eigenschaften[, tief klonen statt kopieren][, Kollisionsfunktion(key, überschriebener Wert, überschreibender Wert, erweitertes Objekt, erweiterndes Objekt)]
+if (!Object.extend) Object.extend = function extend(o, q/*, d, col*/) {
+/* get: zu erweiterndes Objekt (Funktion, etc), Quellobjekt[e] mit den Eigenschaften[, tief klonen statt kopieren][, Kollisionsfunktion(key, überschriebener Wert, überschreibender Wert, erweitertes Objekt, erweiterndes Objekt)]
 return: erweitertes Objekt */
 	if (o !== Object(o) || q !== Object(q))
 		throw new TypeError('Object.extend called on non-object');
+	var col = arguments[arguments.length-1];
+	if (typeof col != "function") {
+		var d = col;
+		col = false;
+	} else 
+		var d = arguments[arguments.length-2];
+	if (typeof d != "boolean")
+		d = false;
 	var p, des;
 	for (p in q) {
 		if (Object.prototype.hasOwnProperty.call(q, p)) {
-			if (typeof col=="function" && Object.prototype.hasOwnProperty.call(o, p)) {
+			if (col && Object.prototype.hasOwnProperty.call(o, p)) {
 				o[p] = col(p, o[p], q[p], o, q);
 			} else {
 				des = Object.getOwnPropertyDescriptor(q, p);
-				if (des.value)
-					o[p] = d ? Object.clone(des.value, d) : des.value;
-				else
-					Object.defineProperty(o, p, des);
+				if (d && typeof des.value == "object")
+					des.value = Object.clone(des.value, d);
+				Object.defineProperty(o, p, des);
 			}
 		}
 	}
+	if (typeof arguments[2] == "object")
+		return extend.apply(null, [o].concat(Array.prototype.slice.call(arguments, 2)));
 	return o;
+};
+
+Object.extendCreated = function extendCreated(o, e) {
+	return Object.extend(Object.create(o), e);
 };
 
 if (!Object.set) Object.set = function set(o, key, value, col) {
@@ -59,22 +72,27 @@ return: erweitertes Objekt */
 };
 
 Object.get = function get(key) {
-	if (typeof key == "string" && arguments.length < 2)
+/* get: (Array of) strings/numbers[, (Array of) strings/numbers, ...]
+return: a function that extracts the property values for the given keys of any object passed to it as an argument
+example: Object.get("a.b".split("."))({a:{b:"x"}}) == "x" */
+	if ((typeof key == "string" || typeof key == "number") && arguments.length < 2)
 		return function(o) {
 			if (o !== Object(o))
 				throw new TypeError('Object.get('+key+') called on non-object');
 			return o[key];
 		}
+//	if (typeof key == "object" && !Array.isArray(key))
+//		return get.apply(null, Array.prototype.slice.call(arguments, 1))(key);
 	var keys = Array.from(arguments).flatten();
-	if ( !keys.every(function(key) { return typeof key == "string"; }) )
+	if ( !keys.every(function(key) { return typeof key == "string" || typeof key == "number"; }) )
 		throw new TypeError("Object.get must be called with strings or arrays of strings as parameters");
 	return function(o) {
-			if (o !== Object(o))
-				throw new TypeError('Object.get('+key+') called on non-object');
-			return keys.reduce(function(o, key) {
-				return o[key];
-			}, o);
-		}
+		if (o !== Object(o))
+			throw new TypeError('Object.get('+key+') called on non-object');
+		return keys.reduce(function(o, key) {
+			return o[key];
+		}, o);
+	}
 };
 
 Object.merge = function merge(a, b) {
