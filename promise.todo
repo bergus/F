@@ -1,16 +1,22 @@
-/* OPEN ISSUES
+ï»¿/* OPEN ISSUES
 * if a promise is already fulfilled, you can add on*-Handlers which will never be called
+	obviously wrong
 ** call handlers when adding them to fulfilled promises? What about restartables then?
+	nothing is restartable
 ** public getState function?
+	needed
 * What happens to a stopped multiple promise, which gets started with a new parameter?
+	save arguments
 * multiple promises getting ended with different types while beeing stopped are not correctly restarted!
 * promises can get ended with different types whiel beeing stopped !!! (used for Stream)
 * conventions for errors: Must be multiple callback?
 * dann-Promises have no chance to receive messages from wenn. Any need for that?
+	no. bubble-up.
 * implement a get(prop) function. ridicoulus approach?
-* abort dann in error case / abort sonst in sucess case ???
+	tbd
+* abort dann in error case / abort sonst in success case ???
 			// wenn.onError(dann.abort) ???
-			// wenn.onSucess(sonst.abort) ???
+			// wenn.onSuccess(sonst.abort) ???
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
 * .syncThen(function(a, b,c){ return [...no error...]}) == .filter(function([a, b, c]){ return [Array]})
 * var x = new Promise(function(p){return prompt(p);}); x.then(x).start("Endlosschleife!");
@@ -18,21 +24,23 @@
 
 
 // 3 Promise-Funktionen sind wichtig und beschreibbar:
-// * chain / Verkettung -> Nacheinander, mit Option was ein Error (jeglicher Art) auslösen soll (returnError | nextPromise | defaultError (spezialError) -> Kontinue after Error ...)
-// * merge / Vereinigung -> Parallelität, mit Option ob All-/Existenzquantor für Error-/Sucess-return gilt
-// * endlicher Automat: -> Menge der Zustände (mit Start- und Endzustand), Ablaufrelationen, defaultSucess, defaultError
+// * chain / Verkettung -> Nacheinander, mit Option was ein Error (jeglicher Art) auslÃ¶sen soll (returnError | nextPromise | defaultError (spezialError) -> Kontinue after Error ...)
+// * merge / Vereinigung -> ParallelitÃ¤t, mit Option ob All-/Existenzquantor fÃ¼r Error-/Success-return gilt
+// * endlicher Automat: -> Menge der ZustÃ¤nde (mit Start- und Endzustand), Ablaufrelationen, defaultSuccess, defaultError
+	a Promise to be fulfilled when the final state is reached
+	implements a full finite-state-machine
 
 // message-Konzept ausarbeiten (Kettendurchlauf?)
 // Start-Stop-Konzept ausarbeiten
 // insbesondere bei Verzweigungen nur eigene Zweige anhalten? Implementation im endlichen Automaten?
 
-// Ein bestimmtes Promise ist bereits vorhanden. Was soll darufhin ausgeführt werden?
-// * einfache Funktion - ohne Promise-Rückgabe  => onSucess, onError, onFinal
+// Ein bestimmtes Promise ist bereits vorhanden. Was soll darufhin ausgefÃ¼hrt werden?
+// * einfache Funktion - ohne Promise-RÃ¼ckgabe  => onSuccess, onError, onFinal
 // * synchrone "Filter"-Funktion - neues Promise | unstoppbar
-// * synchroner Filter oder Funktion mit callback - neues Promise | möglichst stoppbar
-// * synchroner Filter oder Rückgabe Promise - neues Promise | möglichst stoppbar
+// * synchroner Filter oder Funktion mit callback - neues Promise | mÃ¶glichst stoppbar
+// * synchroner Filter oder RÃ¼ckgabe Promise - neues Promise | mÃ¶glichst stoppbar
 // * Funktion mit callback - neues Promise | stoppbar ?
-// * weiteres Promise - neues Promise (Chain?) | auf alle Fälle stoppbar
+// * weiteres Promise - neues Promise (Chain?) | auf alle FÃ¤lle stoppbar
 
 /* TEST SCRIPT FOR STOP-GO PROMISES */
 var ldebug = function(m) { var t = document.getElementById("IO"); t.value += "\n"+m; t.scrollTop = t.scrollHeight-t.clientHeight; };
@@ -42,7 +50,7 @@ var f = function f(p, s, e, m) {
  var t = Number(p[0])*1000;
  setTimeout(function(){
   var r = Math.round(Math.random()*p[1]);
-  ldebug("after "+t+"ms sucessing "+r+" of "+p[1]);  
+  ldebug("after "+t+"ms successing "+r+" of "+p[1]);  
   s(r, p[1]);
  }, t);
 };
@@ -68,3 +76,23 @@ return "";
 /* TEST SCRIPT FOR toString */
 function nothing(){}
 return "" + new Promise(nothing).then(nothing).cache(nothing).then(new Promise(nothing).then(nothing)).syncThen(nothing);
+
+/* TEST SNIPPET FOR simple Promise */
+return new Promise(function(p,s){window.setTimeout(function(){s("Hallo Welt");}, 500);});
+
+/* TEST SNIPPET FOR updatable Promise */
+return new Promise(function(p,s){var i=0;window.setInterval(function(){s("Hallo Welt "+ ++i)}, 500);}, {updatable:true});
+
+/* TEST SNIPPET FOR multiple Promise */
+var i=0, x = new Promise(function(p,s){
+ window.setTimeout(function(){s("Hallo Welt "+ ++i)}, 500);
+}, {updatable:true, starts:"multiple"});
+x.onSuccess(function(){x.start();});
+return x;
+
+/* TEST SNIPPET FOR simple Stream */
+return new Promise.Stream(function(p,s){
+ var i=0;
+ var t=window.setInterval(function(){s("Hallo Welt "+ ++i)}, 500);
+ window.setTimeout(function(){window.clearInterval(t);s();},5000);
+});
