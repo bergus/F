@@ -1,0 +1,297 @@
+﻿from http://wiki.commonjs.org/wiki/Sockets/A
+
+	close() 
+		Close the socket immediately 
+
+
+	receive/read( [maxlen]) 
+	Receive a block of bytes from the socket. Returns block of bytes read 
+		maxlen: number of bytes to read. Default: X bytes 
+
+
+	send/write(data) 
+		Send a block of bytes to the socket 
+		data: block of bytes to send
+
+from http://wiki.commonjs.org/wiki/IO/C/Stream
+
+	function Stream(stream: Stream = null) 
+		Creates a new stream instance. If another stream is provided as an argument to the constructor, the new stream instance will be stacked upon it. Reads and writes from the stream will be relayed to the connected stream and so-on along the stream chain. 
+	function addListener(name: [String | Array], listener: Function): void 
+		Add a listener for events on the stream. Events are issued for important state changes on the stream. Events are issued in both sync and async modes if listeners are registered. 
+		name Name can be a string event name or it can be an array of event names. 
+		listener Callback function to be invoked when the event is emitted. 
+	function get async(): Boolean 
+		Test if the stream is operating in async mode. In async mode, read, write and close methods will not block. 
+		Returns True if the stream is in async mode, otherwise false. 
+	function set async(enable: Boolean): void 
+		Set the streams operating mode. Used to put the stream into async or sync mode. 
+		enable Set to true to put the stream into async mode. Set to false to put the stream into sync mode 
+	function close(): void 
+		Close the stream. 
+		Events The close event is issued when closing the stream. 
+	function read(buffer: ByteArray, offset: Number = 0, count: Number = -1): Number 
+		Read data from the stream. If data is available, the call will return immediately with data. If no data is available and the stream is in sync mode, the call will block until data is available. If no data is available and the stream is in async mode, the call will not block and will return immediately. A "readable" event will be issued if data becomes available for reading. 
+		buffer Destination byte array for read data. 
+		offset Integer offset in the byte array to place the data. If the offset is -1, then data is appended to the buffer. 
+		count Integer count of the number of bytes to read. Read up to this number of bytes. If -1, read as much as the buffer will hold up. If the stream is of fixed and known length (such as a file) and the buffer is of sufficient size or is growable, read the entire stream. 
+		Returns an integer count of the bytes actually read. Returns null on eof. 
+		Events The readable event may be listened to be notified when new read data becomes available. 
+	function removeListener(name: [String | Array], listener: Function): void 
+		Remoe a listener from the stream. 
+		name Name can be a string event name or it can be an array of event names. 
+		listener Callback function specified when the listener was previously added. 
+	function write(...data): Number 
+		Write data to the stream. If the stream can accept all the write data, the call returns immediately with the number of elements written. If writing more data than the stream can absorb in sync mode, the call will block until the data is written. If writing more data than the stream can absorb in async mode, the call will not block and will return immediately. A "writable" event will be issued when all the data has been written. 
+		data Variable number of data objects to write. It is stream specific how the written data will be converted or encoded. 
+		Returns an integer count of the bytes actually written. Returns null on a write error. 
+		Events The writable event is issued when the stream becomes empty and it is ready to be written to.
+
+from http://wiki.commonjs.org/wiki/Promises/KISS
+
+	var p = new Promise = Promise.create
+	updatable promise
+	freeze results
+	p.when / p.whenever
+		to register handlers
+	p.fulfill(err, data, data...)
+		calls handlers with exactly that arguments
+	p.ready
+		true once resolved
+	Promise.join
+		creates a object to which you can add() other promises
+
+from http://wiki.commonjs.org/wiki/Promises/B
+	
+	when(promise, callback, errback_opt)
+		for unresolved promises
+		resolves the promise and listens for success/error, then calls the respective callback function
+		returns a new Promise for the results of the callback functions
+	asap(value, callback, errback_opt) 
+		The value may be any value, or a (resolved) promise; if it is a promise act like when()
+		if not a promise, call the callback immediately
+		callback may return a Promise (which is errorhandled by errback)
+	enqueue(task Function)
+		registering a listener?
+	get(object, name) 
+		Returns a promise for a property of the given object. 
+	post(object, name, args) 
+		Returns a promise for the resulut of an invoked get()ten function
+	put(object, name, value) 
+		returns a promise to set the value of a named property of the object and to forward the value when that has been completed. 
+	del(object, name) 
+		Returns a promise to delete the named property of the object and to forward undefined when that has been completed. ???
+	makePromise(descriptor Object, fallback Function) 
+		"constructor"
+		Accepts a descriptor Object that maps message names to handler functions, particularly: ???
+		when(errback) 
+		get(name) 
+		put(name, value) 
+		post(name, args) 
+		del(name) 
+		Each of the above handler functions must return a more resolved value or promise. 
+		Accepts a fallback(message, ...args) function that receives all messages that are not handled by the promise descriptor and must return a more resolved value or promise. 
+	defer() 
+		Returns an Object with a "resolve(value)" property function, and a "promise" property. 
+			The first time that "resolve(value)" is called, the state of the "promise" advances to "resolved" and all previous and future promises observing the "promise" are resolved. 
+			If the "value" is not a promise, the resolved value of the "promise" becomes a reference ("ref") to the given value. 
+			All subsequent calls to resolve must be silently ignored. 
+	reject(reason String) 
+		Returns a rejected promise with the given reason.
+	ref(value) 
+		If value is a promise, returns that promise. 
+		If the value is not a promise, returns a resolved promise that handles when(), get(), put(), del(), post()
+		all other messages forward a rejection ("reject") with the reason "Promise does not handle NAME" where NAME is the name of the message. 
+	isPromise(value)
+		returns whether the given value is a promise. 
+	method(name String) 
+		returns a function like "get", "put", "del", and "post" except with the given name that must forward a message to a promise in a future turn. ???
+		
+from http://wiki.commonjs.org/wiki/Promises/A ("Thenables")
+	
+	then(fulfilledHandler, errorHandler, progressHandler)
+		addsListeners, returns new Promise
+	get(propertyName) 
+		as always
+	call(functionName, arg1, arg2, ...)
+		invocation as always
+		
+from http://api.jquery.com/category/deferred-object/
+
+	deferred.always()
+		Add handlers to be called when the Deferred object is either resolved or rejected. 
+	deferred.done()
+		Add handlers to be called when the Deferred object is resolved. 
+	deferred.fail()
+		Add handlers to be called when the Deferred object is rejected. 
+	deferred.isRejected()	Deprecated 
+		Determine whether a Deferred object has been rejected. 
+	deferred.isResolved()	Deprecated 
+		Determine whether a Deferred object has been resolved. 
+	deferred.notify()
+		Call the progressCallbacks on a Deferred object with the given args. 
+	deferred.notifyWith()
+		Call the progressCallbacks on a Deferred object with the given context and args. 
+	deferred.pipe()
+		Utility method to filter and/or chain Deferreds. 
+	deferred.progress()
+		Add handlers to be called when the Deferred object generates progress notifications.
+	deferred.promise()
+		Return a Deferred's Promise object. 
+	deferred.reject()
+		Reject a Deferred object and call any failCallbacks with the given args. 
+	deferred.rejectWith()
+		Reject a Deferred object and call any failCallbacks with the given context and args. 
+	deferred.resolve()
+		Resolve a Deferred object and call any doneCallbacks with the given args. 
+	deferred.resolveWith()
+		Resolve a Deferred object and call any doneCallbacks with the given context and args. 
+	deferred.state()
+		Determine the current state of a Deferred object. 
+	deferred.then()
+		Add handlers to be called when the Deferred object is resolved or rejected. 
+	.promise()
+		Return a Promise object to observe when all actions of a certain type bound to the collection, queued or not, have finished. 
+	jQuery.when()
+		Provides a way to execute callback functions based on one or more objects, usually Deferred objects that represent asynchronous events.
+
+from http://jsignal.sourceforge.net/
+
+	block handlers
+	bind signals to classes
+		and create global signals by using Object
+
+===================
+
+Promise
+	represents one value. If solved, never changes state (fulfilled/success - rejected/error)
+	Events: success|error[|abort]|message [final: success/error/abort]
+
+updatable Promise
+	represents a "state". Calls handlers each time the value is resolved
+	* must the "new" value differ from the current to trigger?
+	* which state changes are allowed:
+		- unresolved -> resolved (success / error): obviously
+		- resolved -> unresolved (might be represented with undefined): default no
+		- error -> success: default yes (why not?)
+		- success -> error: default no (should it?)
+	Events: (Promise), but multiple
+
+chunked Promise / Stream
+	a Promise representing an object whose properties come piecewise
+	Events: (Promise)|item[|items]
+	* supporting only arrays, or objects too?
+
+Process
+	a Promise whose solvation must be start()ed
+	* restartable? multiple means Pipe -> no
+	* multistartable - see merge (conflicts) -> should be handled with merge() - no
+	may be represented as a plain function() returning a Promise
+	Events: (Promise)
+	
+updatable Process
+	a updatable Promise whose solvation must be start()ed
+	* restartable for new input? -> let's make it options:
+		- allow multiple calls to start() or not
+		- allow each start()ed multiple resolve calls or not
+		(no and no means normal Process)
+	* in case of multiple calls to start():
+		- resolve whenever you want
+		- resolve calls from past start() calls cannot overwrite resolvings from later start()s
+		- (in case of no multiple resolvings per start) resolvings from later start()s must wait for (at least one?) resolving from former start()s
+	* see also considerations at "updatable Promise"
+
+Process-Stream / startable Stream
+	mix Process into Stream
+	* or the other way round?
+
+multistartable Stream
+
+updatable mulistartable Process / Pipe
+
+Publisher
+
+FiniteStateMachine
+
+
+Promises must be chainable (with Processes)
+	returning a new Promise
+	* updatable Promises with oncestartable Processes: first-come-first-serve or error throwing?
+
+Promises must be mergeable ("join")
+	the new Promise may represent
+		- the first solved promise
+		- an object merged together from results (order?)
+		- an array of results in order of solvation
+		- an array of results in order of given promises
+	the new Promise may be updatable
+		- see at updatableProcess for options
+	the new Promise may fail when
+		- all promises resolve to an error (how to merge the errors?)
+		- one promise resolves in an error
+		- never, the errors are merged in the result
+		(depending on the type of the represented value)
+
+Promises must support stog/go actions
+	a stopped Promise is not allowed to resolve
+	it should stop all processes running / promises it depends on
+		* how to handle branched data flow (chaining, merging)? - maybe .cache(DONTSTOP)?
+	* what happens to already resolved promises? Preventing them from insta-calling new handlers sounds like disactivate()/activate()
+
+Promises might be abortable?
+	not to confuse with Promise.abort(), which prevents solvation
+	* just like stop()?
+
+Unterschiede zwischen Stream[.onItem()] und updatable Promise[.success()]:
+* letztes Element wird nicht vorgehalten
+* alle Elemente werden in einem Array gehalten
+* kein Fehlerzustand
+* keine Final-Handler
+* addItemHandler wird für vergangenes ausgeführt
+Gemeinsamkeiten:
+* postProcess
+* pendingResults / handling - can be frozen
+	
+API:
+
+
+function Deferred(opt) {
+	var def = this;
+	this.promise = new Promise(function(sc, ec, mc){
+		def.resolve = def.callback = sc;
+		def.reject = def.errback = ec;
+		def.progress = mc;
+	}, opt);
+	// Object.extend(this, this.promise);
+}
+
+function Promise(fn) {
+	var callbacks = [], result;
+	fn(function() {
+		result = arguments;
+		for (var c;c=callbacks.shift();)
+			c.apply(null, arguments);
+	});
+	this.addCallback = function(c) {
+		if (result)
+			c.apply(null, result)
+		else
+			callbacks.push(c);
+	}
+}
+Promise.prototype.then = function(fn) {
+	var that = this;
+	return new Promise(function(c){
+		that.addCallback(function() {
+			var result = fn.apply(null, arguments);
+			if (result instanceof Promise)
+				result.addCallback(c);
+			else
+				c(result);
+		});
+	});
+};
+
+
+
+
