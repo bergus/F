@@ -26,7 +26,7 @@ Function.prototype.argcall = function(/*arg1, ...*/) {
 	var fn = this,
 		args = Array.prototype.slice.call(arguments);
 	return function(context/*, argM, ...*/) {
-		return fn.apply(context, arsg.concat(Array.prototype.slice.call(arguments, 1)));
+		return fn.apply(context, args.concat(Array.prototype.slice.call(arguments, 1)));
 	};
 }
 
@@ -116,3 +116,36 @@ return: the functions result converted to boolean, optionally inverted */
 		return ! (real ^ fn.apply(this, arguments));
 	};
 }
+
+Function.ident = Function.identity = Function.I = function identity(x) {
+	return x;
+};
+
+Function.chain = Function.compose = function compose(fn) {
+	var fns = Array.prototype.slice.call(arguments, 0);
+	if (fns.length == 0)
+		return Function.identity;
+	if (fns.length == 1)
+		return fn;
+	return function composed() {
+	// from http://base2.googlecode.com/svn/version/1.0.2/src/base2.js
+		var i = fns.length,
+			result = fns[--i].apply(this, arguments);
+		while (i--)
+			result = fns[i].call(this, result);
+		return result;
+	};
+};
+
+Function.Named = function NamedFunction(name, args, body, scope, values) {
+	var i = 1;
+	if (typeof args == "string")
+		values = scope, scope = body, body = args, args = [];
+	if (!Array.isArray(scope) || !Array.isArray(values)) {
+		if (typeof scope == "object")
+			values = Object.values(scope), scope = Object.keys(scope);
+		else
+		    values = [], scope = [];
+	}
+	return Function.apply(null, scope.concat("function "+name+" ("+args.join(", ")+") {\n"+body+"\n}\nreturn "+name+";")).apply(null, values);
+} 

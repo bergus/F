@@ -8,19 +8,58 @@
 	return ret;
 };
 
+Object.len = function length(o) {
+	return Object.getOwnPropertyNames(o).length;
+};
+
 if (!Object.clone) Object.clone = function clone(o, d) {
 	if (o !== Object(o))
-		return o; // primitives Literal
-	if (o instanceof Node)
+		return o; // primitive value
+	if (Node && o instanceof Node)
 		return Node.prototype.cloneNode.call(o, Boolean(d));
 	var n;
-	if (o.constructor == Date || o.constructor == RegExp || o.constructor == String || o.constructor == Number || o.constructor == Boolean)
+	if ([Date, RegExp, String, Number, Boolean].indexOf(o.constructor) >= 0) // might use instanceof
 		n = new o.constructor(o);
-	if (o.constructor == Function)
-		n = o; // new Function(o) a) funktioniert nicht in Opera b) tut merkwürdige Dinge in Firefox
-	if (n !== Object(n))
-		n = new o.constructor(); // {}
+	if (o instanceof Function)
+		n = function cloned() {return o.apply(this, arguments)}; // new Function(o) a) funktioniert nicht in Opera b) tut merkwürdige Dinge in Firefox
+	// check for "clone" in o && typeof getPrototypeOf(o).clone == "function"...
+	// check for typeof o.constructor.clone == "function" && o.constructor.clone !== clone
+	if (n !== Object(n)) // we still got no new object
+		n = new o.constructor(); // {}, [], custom
 	return Object.extend(n, o, d);
+};
+
+Object.copyCircular = function deepCircularCopy(o) {
+/* get: plain Object
+		creates a copy of the object. Circular references (pointers back/up to a "parent") are recognised, no endless loops will be encountered.
+return: cloned Object */
+    const gdcc = "__getDeepCircularCopy__";
+	if (o !== Object(o))
+		return o; // primitive value
+	var set = gdcc in o,
+		cache = o[gdcc],
+		result;
+	if (set && typeof cache == "function")
+	    return cache();
+	// else
+	o[gdcc] = function() { return result; }; // overwrite
+	if (o instanceof Array) {
+		result = [];
+		for (var i=0; i<o.length; i++)
+			result[i] = deepCircularCopy(o[i]);
+	} else {
+		result = {};
+		for (var prop in o)
+			if (prop != gdcc)
+				result[prop] = deepCircularCopy(o[prop]);
+			else if (set)
+				result[prop] = deepCircularCopy(cache);
+	}
+	if (set)
+		o[gdcc] = cache; // reset
+	else
+		delete o[gdcc]; // unset again
+	return result;
 };
 
 if (!Object.extend) Object.extend = function extend(o, q/*, d, col*/) {
@@ -36,6 +75,7 @@ return: erweitertes Objekt */
 		var d = arguments[arguments.length-2];
 	if (typeof d != "boolean")
 		d = false;
+	// @TODO: Use Object.getOwnPropertyNames
 	var p, des;
 	for (p in q) {
 		if (Object.prototype.hasOwnProperty.call(q, p)) {
@@ -60,6 +100,8 @@ Object.extendCreated = function extendCreated(o, e) {
 
 if (!Object.set) Object.set = function set(o, key, value, col) {
 /* get: zu erweiterndes Objekt (Funktion, etc), String key (property), mixed value[, Kollisionsfunktion(key, überschriebener Wert, überschreibender Wert, erweitertes Objekt)]
+		This is a shortcut function, to make creating of an object, setting a property with variable name on it, and returning it a one-liner:
+		example:  return Object.set({}, someProp, someVal);
 return: erweitertes Objekt */
 	if (o !== Object(o))
 		throw new TypeError('Object.set called on non-object');
@@ -95,22 +137,43 @@ example: Object.get("a.b".split("."))({a:{b:"x"}}) == "x" */
 	}
 };
 
-Object.merge = function merge(a, b) {
+Object.combine = function combine(a, b) {
+/* get: Object, Object, Object, ... | Array, Array, Array, ...
+return: the first object (a), extended with items from the others. Conflicting items are again combined (to each other) */
 	if (Object(a) !== a)
-		throw new TypeError('Object.merge called on non-object');
+		throw new TypeError('Object.combine called on non-object');
 	if (Array.isArray(a))
-		return Array.prototype.merge.apply(a, Array.prototype.slice.apply(arguments, 1));
-	Object.extend(a, b, false, function merge(k, a, b) {
+		return Array.prototype.combine.apply(a, Array.prototype.slice.apply(arguments, 1));
+	Object.extend(a, b, false, function combine(k, a, b) {
 		if (a === b)
 			return a;
 		if (Array.isArray(a) && Array.isArray(b))
-			return a.merge(b);
-		return Object.extend(a, b, false, merge); // throws an Error when trying to merge non-objects
+			return a.combine(b);
+		return Object.extend(a, b, false, combine); // throws an Error when trying to merge non-objects
 	});
 	if (arguments.length > 2)
-		return Object.merge.apply(null, [a].concat(Array.prototype.slice.apply(arguments, 2)));
+		return Object.combine.apply(null, [a].concat(Array.prototype.slice.apply(arguments, 2)));
 	return a;
 };
+Object.merge = function merge(a) {
+/* get: Object, Object, Object, ... | Array, Array, Array, ...
+return: a new object, extended with items from the others. Conflicting items are again merged (to each other) */
+	if (Object(a) !== a)
+		throw new TypeError('Object.merge called on non-object');
+	if (Array.isArray(a))
+		return Array.prototype.combine.apply([], arguments);
+	var res = {};
+	for (var i=0; i<arguments.length; i++)
+		Object.extend(res, arguments[i], false, function merge(k, a, b) {
+			if (a === b)
+				return a;
+			if (Array.isArray(a) && Array.isArray(b))
+				return a.merge(b); // creates a copy!
+			return Object.extend(a, b, false, merge); // throws an Error when trying to merge non-objects
+		});
+	return res;
+};
+
 /* Object.cloneMerge = function cloneMerge(a) {
 	if (arguments.length < 2)
 		return Object.clone(a);
@@ -192,8 +255,44 @@ return: String */
 Object.isEmpty = function isEmpty(o) {
 	if (o !== Object(o))
 		throw new TypeError('Object.isEmpty called on non-object');
-	for (var key in this)
+	for (var key in o)
 		if (Object.prototype.hasOwnProperty.call(o, key))
 			return false;
 	return true;
+};
+
+Object.restructure = function restructure(o) {
+
+/* @ TODO !!! */
+
+	var struc = Array.prototype.slice.call(arguments, 1);
+	var path = new Array(struc.length);
+	
+	function recurse(lvl, curob, val, fill) {
+		while (fill < struc.length-1 && fill in path) { // this is no for-in-loop!
+			val = val[path[fill]] || (val[path[fill]] = {});
+			fill++;
+		}
+		
+		if (lvl < struc.length) {
+			var willbe = struc[lvl];
+			if (Array.isArray(curob))
+				for (var i=0; i<curob.length; i++) {
+					path[willbe] = true;
+					recurse(lvl+1, curob[i], val, fill);
+					delete path[willbe]; // I know it's an Array
+				}
+			else
+				for (var prop in curob) {
+					path[willbe] = prop;
+					recurse(lvl+1, curob[prop], val, fill);
+					delete path[willbe]; // I know it's an Array
+				}
+		} else {
+console.assert(lvl-1 == fill, "fill ("+fill+") is different from lvl ("+lvl+")");
+			val[path[fill]] = curob;
+		}
+		return val;
+	}
+	return recurse(0, o, {}, 0);
 };

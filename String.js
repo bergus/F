@@ -1,18 +1,13 @@
 ﻿// Non-standards from Firefox
 if (!String.prototype.quote) String.prototype.quote = function() {
 	// return JSON.stringify(this).substr(1,-1);
-	var s;
+	var s="";
 	for (var i=0; i<this.length; i++) {
 		var c = this.charCodeAt(i);
-		if (c > 31 && c < 128) {
-			if (c == 34)
-				s += "\\\"";
-			else if (c == 39)
-				s += "\\'";
-			else if (c == 92)
-				s += "\\\\";
-			else
-				s += this.charAt(i);
+		if (c > 31 && c < 127) {
+			if (c == 34 || c == 39 || c == 92)
+				s += "\\"; /* for ", ' and \ */
+			s += this.charAt(i);
 		} else {
 			s += "\\";
 			if (c == 0)
@@ -61,7 +56,8 @@ String.prototype.padright = function padright(len, cha) {
 	return (this.length<len)?(this+(typeof cha=="string"?cha:" ")).padright(len,cha):this.substr(0,len);
 };
 String.prototype.repeat = function repeat(times) {
-	for(var r = ""; --times >= 0; r+=this); return r;
+	for(var r = ""; --times >= 0; r+=this);
+	return r;
 };
 String.prototype.indent = function indent(t, i) {
 	t = t || "\t";
@@ -98,11 +94,14 @@ String.prototype.endspn = function endspn(s, e) {
 // return this.reverse().spn(s);
 	return this.match(new RegExp("["+s+"]*$"))[0].length;
 };
-String.prototype.startsWith = function startsWith(s) {
+String.prototype.startsWith = String.prototype.beginsWith = function beginsWith(s) {
 	return this.substring(0, s.length) === s;
 };
 String.prototype.endsWith = function endsWith(s) {
 	return this.substr(-s.length) === s;
+};
+String.prototype.contains = function contains(s) {
+	return this.indexOf(s) != -1;
 };
 String.prototype.replaceChars = function replaceChars(map) {
 	var i, reg = "";
@@ -131,7 +130,7 @@ String.prototype.rot13 = function rot13() {
 		// start + ( code - start + 13) % 26
 	});
 };
-String.prototype.regExp = function regExp(save) {
+String.prototype.rescape = String.prototype.regExp = function regExp(save) {
 	return this.replace(save
 		? /([\\+*?\[^\]$(){}=!<>|:\-])/g // PHP: PRCE preg_quote  =!<> dürften in JS unerheblich sein, / wird von new RegExp() maskiert
 		: /([{}()[\]\\.?*+^$|=!:~-])/g //-> {}()[\]\\.?*+^$|=!:~- // Bergi
@@ -139,7 +138,8 @@ String.prototype.regExp = function regExp(save) {
 		  /([-.*+?^${}()|[\]\/\\])/g     -> {}()[\]\\.?*+^$|-     // MooTools
 		  /([{}()|.?*+^$\[\]\\\/])/g     -> {}()[\]\\.?*+^$|\/    // Codeispoetry, Umherirrender
 		  /([.?*+^$[\]\\(){}-])/g        -> {}()[\]\\.?*+^$-      // http://stackoverflow.com/questions/2593637/how-to-escape-regular-expression-in-javascript
-		  /([\\{}()|.?*+\-^$\[\]])/g     -> {}()[\]\\.?*+^$|\-    // /1.17wmf1/resources/mediawiki/mediawiki.js (kopiert von jQuery)
+		  /([\\{}()|.?*+\-^$\[\]])/g     -> {}()[\]\\.?*+^$|-     // /1.17wmf1/resources/mediawiki/mediawiki.js (kopiert von jQuery)
+		  /([\/()[\]{}|*+-.,^$?\\])/g    -> {}()[\]\\.?*+^$|-,\/  // base2    
 		*/
 	, "\\$1");
 };
