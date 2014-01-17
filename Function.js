@@ -137,6 +137,25 @@ Function.chain = Function.compose = function compose(fn) {
 	};
 };
 
+Function.prototype.nest = function nest(n) {
+	var fn = this;
+	if (typeof n == "number")
+		return function nested(x) {
+			for (var i=n; i--; )
+				x = fn.call(this, x);
+			return x;
+		};
+	else if (typeof n == "function")
+		return function nested(x) {
+			while (n(x))
+				x = fn.call(this, x);
+			return x;
+		};
+	else
+		// TODO: warning
+		return Function.idendity;
+}
+
 Function.Named = function NamedFunction(name, args, body, scope, values) {
 	var i = 1;
 	if (typeof args == "string")
@@ -148,4 +167,14 @@ Function.Named = function NamedFunction(name, args, body, scope, values) {
 		    values = [], scope = [];
 	}
 	return Function.apply(null, scope.concat("function "+name+" ("+args.join(", ")+") {\n"+body+"\n}\nreturn "+name+";")).apply(null, values);
-} 
+};
+
+Function.invoke = function(fn) {
+	var args = Array.prototype.slice.call(arguments, 1);
+	if (typeof fn == "function")
+		return fn.argWith.apply(fn, args); // function(obj) { return fn.apply(obj, args); }
+	else
+		return function(obj) {
+			return obj[fn].apply(obj, args);
+		};
+};
