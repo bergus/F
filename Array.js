@@ -555,6 +555,47 @@ Array.prototype.insort = function insort(el, cmp) {
     return i+1;
 };
 
+Array.prototype.sliceRange = function(min, max) {
+	// find a range in the array via binary sort and return it
+    if (min > max) return this.sliceRange(max, min);
+    var l = 0,
+        r = this.length;
+    // find an element at index m that is in range
+    rough: {
+        while (l < r) {
+            var m = Math.floor(l + (r - l) / 2);
+            if (this[m] < min)
+                l = m + 1;
+            else if (this[m] > max)
+                r = m;
+            else
+                break rough;
+        }
+        // l == r: none was found
+        return [];
+    }
+    var lr = m, // right boundary for left search
+        rl = m; // left boundary for right search
+    // get first position of items in range (l == lr)
+    while (l < lr) {
+        m = Math.floor(l + (lr - l) / 2);
+        if (this[m] < min)
+            l = m + 1;
+        else
+            lr = m;
+    }
+    // get last position of items in range (r == rl)
+    while (rl < r) {
+        m = Math.floor(rl + (r - rl) / 2);
+        if (this[m] > max)
+            r = m;
+        else
+            rl = m + 1;
+    }
+    // return the items in range
+    return this.slice(l, r);
+};
+
 /* noch zu bearbeiten
 Array.prototype.getHexRGB = function() {
 	if (this.length != 3) return "";
