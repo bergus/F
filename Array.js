@@ -507,33 +507,52 @@ return: boolean whether the item is in the array */
 		: this.indexOf(item) != -1;
 };
 
-Array.prototype.binaryIndexOf = function binaryIndexOf(comparefn, element) {
-/* get: (a compare function(a, b), an element to search for | a compare function(a) against the searched element)
-		The compare function should return the same values as for a traditional sort(): -1 means a is smaller than b
-		Note: The function might not return the index of the element, but of a element that equals it
-return: the index of the element, -1 if not found */
-	if (arguments.length > 1)
-		comparefn = (function(orig, args) {
-			return function(a) {
-				args[0] = a;
-				return orig.apply(this, args);
-			};
-		})(comparefn, Array.prototype.slice.call(arguments, 0));
+(function(){
 	
-	var l = 0,
-		r = this.length-1;
+	Array.prototype.binaryIndexOf = createSearch(false); // return: the index of the element, -1 if not found
+	Array.prototype.binaryIndexFor = createSearch(true); // return: the index of the element, or the next left of its hypothetical position
+	                                                     //         so that always arr[res]<=el && arr[res+1]>=el
+	                                                     //         -1 when el<arr[0]  
 	
-	while (l <= r) {
-		var m = ~~(l + (r-l)/2);
-		var comp = comparefn(this[m]);
-		if (comp < 0) // this[m] comes before the element
-			l = m+1;
-		else if (comp > 0) // this[m] comes after the element
-			r = m-1;
-		else // this[m] equals the element
-			return m;
+	function createSearch(relativeMatch) {
+		return function binaryIndexOf(comparefn, element) {
+		/* get: (a compare function(a, b), an element to search for | a compare function(a) against the searched element)
+				The compare function should return the same values as for a traditional sort(): <0 means a is smaller than b
+				Note: The function might not return the index of the element, but of a element that equals it */
+			if (arguments.length > 1)
+				comparefn = (function(orig, args) {
+					return function(a) {
+						args[0] = a;
+						return orig.apply(this, args);
+					};
+				})(comparefn, Array.prototype.slice.call(arguments, 0));
+			
+			var l = 0,
+				r = this.length-1;
+			
+			while (l <= r) {
+				var m = l + ((r - l) >> 1);
+				var comp = comparefn(this[m]);
+				if (comp < 0) // this[m] comes before the element
+					l = m + 1;
+				else if (comp > 0) // this[m] comes after the element
+					r = m - 1;
+				else // this[m] equals the element
+					return m;
+			}
+			return l*relativeMatch-1;
+		};
 	}
-	return -1;
+})();
+
+Array.prototype.insort = function insort(el, cmp) {
+	var i = typeof cmp == "function"
+	  ? this.binaryIndexFor(cmp, el)
+	  : this.binaryIndexFor(function(a) {
+       		return +(a>el) || -(a<el);
+   		});
+    this.splice(i+1, 0, el);
+    return i+1;
 };
 
 /* noch zu bearbeiten
