@@ -85,7 +85,30 @@ listening an event should return?
 
 */
 function ContinuationManager() {
+	var waiting = [];
 	
+	function next() {
+		if (waiting.length <= 1)
+			return waiting.shift();
+		suspended.priority = waiting[0].priority;
+		return suspended;
+	}
+	function suspended() {
+		var postponed = waiting.shift().call();
+		if (typeof postponed == "function")
+			waiting.insertSorted(postponed, "priority");
+		return next();
+	}
+	this.each = function (arr, cb) {
+		for (var i=0, l=arr.length; i<l; i++) {
+			var cont = cb(arr[i], i);
+			if (typeof cont == "function")
+				waiting.insertSorted(cont, "priority");
+		}
+		return this;
+	};
+	this.getContinuation = next;
+	// ensure all waiting have higher priority than the current?
 }
 function ListenerManager() {
 	var listeners = [],
@@ -102,7 +125,12 @@ function ListenerManager() {
 		return this;
 	};
 	this.fire = function(event) {
-		return fire(event, listeners, null);
+		// invokes all given listeners with event and context
+		// returns: Continuation or undefined
+
+		return new ContinuationManager().each(listeners, function(l) {
+			return l.call(context, event);
+		}).getContinuation();
 	};
 	this.setPriority(p) {
 		// might be invoked on a listener function, not the manager
@@ -111,11 +139,10 @@ function ListenerManager() {
 		if (p <= this.priority)
 			return;
 		prio = p;
-		for (var i=0, l=listeners.length; i<l; i++)
-			if (listeners[i].priority <= prio) {
-				var cont = listeners[i].setPriority(prio+1);
-				if (typeof cont == "function")
-					waiting.insertSorted(cont, "priority");
+		return new ContinuationManager().each(listeners, function(l) {
+			if (l.priority <= prio) {
+				return l.setPriority(prio+1);
+		}).getContinuation();
 	}
 }
 
@@ -147,30 +174,6 @@ function dispatch(event, listeners, context) {
 	while (waiting.length)
 		if (typeof (postponed = listeners.shift().call(context, event)) == "function")
 			waiting.insertSorted(postponed, "priority"); */
-}
-function fire(event, listeners, context) {
-	// invokes all given listeners with event and context
-	// returns: Continuation or undefined
-	function next() {
-		if (waiting.length <= 1)
-			return waiting.shift();
-		suspended.priority = waiting[0].priority;
-		return suspended;
-	}
-	function suspended() {
-		var postponed = waiting.shift().call();
-		if (typeof postponed == "function")
-			waiting.insertSorted(postponed, "priority");
-		return next();
-	}
-
-	var waiting = [],
-		postponed;
-	for (var i=0, l=listeners.length; i<l; i++)
-		if (typeof (postponed = listeners[i].call(context, event)) == "function")
-			waiting.insertSorted(postponed, "priority");
-	// ensure all waiting have higher priority than the current?
-	return next();
 }
 function map(fn, listeners) {
 	// stream.listen(map(fn, [...]))
