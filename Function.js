@@ -6,7 +6,7 @@ Function.prototype.callarg = function(context/*, arg1, ...*/) {
 	return function() {
 		return Function.prototype.call.apply(fn, args);
 	};
-}
+};
 
 /* Function.prototype.bind */
 
@@ -20,7 +20,7 @@ Function.prototype.argwith = function(/*arg1, ...*/) {
 	return function(context) {
 		return fn.apply(context, args);
 	};
-}
+};
 
 Function.prototype.argcall = function(/*arg1, ...*/) {
 	var fn = this,
@@ -28,11 +28,11 @@ Function.prototype.argcall = function(/*arg1, ...*/) {
 	return function(context/*, argM, ...*/) {
 		return fn.apply(context, args.concat(Array.prototype.slice.call(arguments, 1)));
 	};
-}
+};
 
 /* Function.prototype. = function() {
 
-} */
+}; */
 
 Function.prototype.arg = function(/*arg1, ...*/) {
 	var fn = this,
@@ -40,7 +40,7 @@ Function.prototype.arg = function(/*arg1, ...*/) {
 	return function() {
 		return fn.apply(this, args);
 	};
-}
+};
 
 Function.prototype.pcall = Function.prototype.partial = function() {
 	if (arguments.length < 1)
@@ -50,7 +50,7 @@ Function.prototype.pcall = Function.prototype.partial = function() {
 	return function(/*argM, ...*/) {
 		return fn.apply(this, args.concat(Array.prototype.slice.call(arguments)));
 	};
-}
+};
 
 Object.keys(Function.prototype).concat(["bind"]).forEach(function(method) {
 	Function[method] = function(fn) {
@@ -106,7 +106,7 @@ Function.prototype.result = function result(r) {
 		fn.apply(this, arguments);
 		return r;
 	};
-}
+};
 
 Function.prototype.bool = function(real) {
 /* get: boolean real: whether the result should be returned as it is or get inverted
@@ -115,7 +115,7 @@ return: the functions result converted to boolean, optionally inverted */
 	return function() {
 		return ! (real ^ fn.apply(this, arguments));
 	};
-}
+};
 
 Function.ident = Function.identity = Function.I = function identity(x) {
 	return x;

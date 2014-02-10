@@ -49,4 +49,16 @@ function lazy(fn, args) {
 	execute.lazy = true;
 	return execute;
 }
-		
+
+/* better garbage collection (of fn and args) with this pattern:
+function lazy(fn, args, context) {
+	var result = null;
+	var todo = function() {
+		todo = false;
+		return result = fn.apply(context, args);
+	};
+	return function() {
+		return !todo ? result : todo();
+	};
+}
+*/
