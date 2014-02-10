@@ -6,11 +6,12 @@ function Stream(fn) {
 		stop = null,
 		go = fn(fire, setPriority);
 	function add(ls) {
-		listeners.push(ls);
-		ls.priority = prio+1;
-		
-		if (listeners.length == 1)
+		// @TODO: go or push first?
+		if (listeners.length == 0)
 			stop = go();
+			
+		listeners.push(ls);
+		ls.priority = priority;
 		return this;
 	}
 	function remove(ls) {
@@ -19,6 +20,7 @@ function Stream(fn) {
 			listeners.splice(i, 1);
 			if (listeners.length == 0)
 				go = stop();
+		}
 		return this;
 	}
 	function fire(event) {
@@ -30,16 +32,16 @@ function Stream(fn) {
 		}).getContinuation();
 	}
 	function setPriority(p) {
-		// might be invoked on a listener function, not the manager
-		if (p < prio)
+		// updates the priority of the listeners
+		if (p < priority)
 			throw "ListenerManager::setPriority: Reducing priority is not designed (yet)";
-		if (p <= this.priority)
+		if (p == priority)
 			return;
-		prio = p;
-		return new ContinuationManager().each(listeners, function(l) {
-			if (l.priority <= prio) {
-				return l.setPriority(prio+1);
-		}).getContinuation();
+		priority = p;
+		return new ContinuationBuilder().each(listeners, function(l) {
+			if (l.priority < priority) {
+				return l.setPriority(priority);
+		});
 	}
 
 	this.addEventListener = add;

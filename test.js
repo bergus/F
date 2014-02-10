@@ -74,7 +74,7 @@ Problems:
   Use wrappers to "discretetisize" parallel events in own environment with own dispatch method and explicit, "parallel" output
 * How does lazy listening work with asynchronous combinators? It does not, async is a kind of output and requires a strict listener
                                                               The computations may be deferred though, using Lazy.js
-*     
+* Adding the first listener starts event propagation - go(). How does the listener receive the current event (if any?)? How is its priority computed and assigned?
 
 */
 
@@ -87,10 +87,11 @@ listening an event should return?
  * lazyness of values
 
 */
-function ContinuationManager() {
+function ContinuationBuilder() {
 	var waiting = [];
 	
 	function next() {
+		// @FIXME ensure all waiting have higher priority than the current? Necessary?
 		if (waiting.length <= 1)
 			return waiting.shift();
 		suspended.priority = waiting[0].priority;
@@ -110,8 +111,11 @@ function ContinuationManager() {
 		}
 		return this;
 	};
+	this.add = function(cont) {
+		waiting.insertSorted(cont, "priority");
+		return this;
+	};
 	this.getContinuation = next;
-	// ensure all waiting have higher priority than the current?
 }
 
 function dispatch(event, listeners, context) {
@@ -138,35 +142,39 @@ function compose() {
 	
 	return new Stream(function(fire, propagatePriority) {
 		var listeners = new Array(l),
-		    prio = 0;
-		    steps = [],
-		    latest = null; // @TODO: steps could intersect calling their listeners (a1,a2,b1,b2 instead of a1,b1,a2,b2)
-		    new Array(l);
+		    prio = 0; // priority of the listeners
+		    steps = [], // @TODO: simple counter instead of set of active steps?
+		    values = new Array(l); // @FIXME array of arrays of arguments
 		function setPriority(p) {
-			if (p < prio) return;
-			prio = p;
-			propagatePriority(p);
+			if (p <= prio || p <= this.priority) return;
+			prio = this.priority = p;
+			propagatePriority(prio+1).each(steps, function(_, i) {
+				return steps[i] = makeStep();
+			}).getContinuation();
 		}
-		function makeStep(vals) {
-			var values = vals || new Array(l),
-				hasFired = false;
+		function makeStep() {
 			function continuation() {
-				if (hasFired)
+				var i = steps.indexOf(continuation);
+				if (i < 0) // || continuation.priority <= prio
 					return;
-				if (continuation.priority < prio)
-					// @TODO: problems
-				return fire(values);
+				steps.splice(i, 1);
+				return fire(values.invoke("shift"));
 			}
-			continuation.priority = prio;
-			values.cont = continuation;
-			return values;
+			continuation.priority = prio+1;
+			return continuation;
 		}
 		function makeListener(i) {
 			function listener(v) {
-				if (!latest || i in latest)
-					steps.push(latest = makeStep());
-				latest[i] = v;
-				return latest.continuation;
+				if (i in values)
+					values[i].push(v);
+				else
+					values[i] = [v];
+					
+				if (values[i].length > steps.length) {
+					var last = makeStep();
+					steps.push(last);
+					return last;
+				}
 			}
 			listener.setPriority = setPriority;
 			return listener;
@@ -176,8 +184,11 @@ function compose() {
 		function go() {
 			for (var i=0; i<l; i++) {
 				arguments[i].addEventListener(listeners[i]);
-				if (listeners[i].priority > prio)
-					// @TODO
+				if (listeners[i].priority > prio) {
+					prio = listeners[i].priority;
+					if (typeof propagatePriority(prio+1) == "function")
+						throw "propagating priority during go() requires continuation dispatch";
+				}
 			}
 			return stop;
 		}
