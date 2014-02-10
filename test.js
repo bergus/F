@@ -72,7 +72,9 @@ Problems:
                                                    should this be handled by the listenermanager (and the listenercreator)?
                                                    why not simply pass an array of events? - only where expected or what?
   Use wrappers to "discretetisize" parallel events in own environment with own dispatch method and explicit, "parallel" output
-* 
+* How does lazy listening work with asynchronous combinators? It does not, async is a kind of output and requires a strict listener
+                                                              The computations may be deferred though, using Lazy.js
+*     
 
 */
 
@@ -82,6 +84,7 @@ listening an event should return?
  * the priority level
  * the current value
  * the stop function
+ * lazyness of values
 
 */
 function ContinuationManager() {
