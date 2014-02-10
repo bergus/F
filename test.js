@@ -110,60 +110,7 @@ function ContinuationManager() {
 	this.getContinuation = next;
 	// ensure all waiting have higher priority than the current?
 }
-function ListenerManager() {
-	var listeners = [],
-		prio = 0;
-	this.add = function(ls) {
-		listeners.push(ls);
-		ls.priority = prio+1;
-		return this;
-	};
-	this.remove = function(ls) {
-		var i = listeners.indexOf(ls);
-		if (i >= 0)
-			listeners.splice(i, 1);
-		return this;
-	};
-	this.fire = function(event) {
-		// invokes all given listeners with event and context
-		// returns: Continuation or undefined
 
-		return new ContinuationManager().each(listeners, function(l) {
-			return l.call(context, event);
-		}).getContinuation();
-	};
-	this.setPriority(p) {
-		// might be invoked on a listener function, not the manager
-		if (p < prio)
-			throw "ListenerManager::setPriority: Reducing priority is not designed (yet)";
-		if (p <= this.priority)
-			return;
-		prio = p;
-		return new ContinuationManager().each(listeners, function(l) {
-			if (l.priority <= prio) {
-				return l.setPriority(prio+1);
-		}).getContinuation();
-	}
-}
-
-Array.insertSorted = function(el, by) {
-	if (typeof by != "function")
-		by = Object.get(by);
-	var l = this.length,
-		cel = by(el);
-	if (l == 0)
-		this[0] = el;
-	else if (cel < by(this[0])) // check common case in O(1)
-		this.unshift(el);
-	else if (l == 1 || cel >= by(this[l-1]))
-		this.push(el);
-	else
-		// insortBy - see also Array::insort
-		this.splice(1+this.binaryIndexFor(function(a) {
-			var ca = by(a);
-			return +(ca>cle) || -(ca<cel);
-		}), 0, el);
-};
 function dispatch(event, listeners, context) {
 	var next = fire(event, listeners, context);
 	while (typeof next == "function") // boing boing boing
@@ -183,21 +130,62 @@ function map(fn, listeners) {
 	};
 }
 function compose() {
-	var res = new ListenerManager(),
-		l = argument.length,
-		values = new Array(l);
-	function makeListener(i) {
-		function listener(v) {
-			values[i] = v;
-			return continuation;
+	var args = arguments,
+	    l = args.length;
+	
+	return new Stream(function(fire, propagatePriority) {
+		var listeners = new Array(l),
+		    prio = 0;
+		    steps = [],
+		    latest = null; // @TODO: steps could intersect calling their listeners (a1,a2,b1,b2 instead of a1,b1,a2,b2)
+		    new Array(l);
+		function setPriority(p) {
+			if (p < prio) return;
+			prio = p;
+			propagatePriority(p);
 		}
-		listener.setPriority = res.setPriority;
-		return listener;
-	}
-	for (var i=0; i<l; i++) {
-		arguments[i].add(makeListener(i))
-	}
-	return res;
+		function makeStep(vals) {
+			var values = vals || new Array(l),
+				hasFired = false;
+			function continuation() {
+				if (hasFired)
+					return;
+				if (continuation.priority < prio)
+					// @TODO: problems
+				return fire(values);
+			}
+			continuation.priority = prio;
+			values.cont = continuation;
+			return values;
+		}
+		function makeListener(i) {
+			function listener(v) {
+				if (!latest || i in latest)
+					steps.push(latest = makeStep());
+				latest[i] = v;
+				return latest.continuation;
+			}
+			listener.setPriority = setPriority;
+			return listener;
+		}
+		for (var i=0; i<l; i++)
+			listeners[i] = makeListener(i); 
+		function go() {
+			for (var i=0; i<l; i++) {
+				arguments[i].addEventListener(listeners[i]);
+				if (listeners[i].priority > prio)
+					// @TODO
+			}
+			return stop;
+		}
+		function stop() {
+			for (var i=0; i<l; i++) {
+				args[i].removeEventListener(listeners[i]);
+			}
+			return go;
+		}
+		return go;
+	});
 }
 
 // all, seq, allSettled:	[Monad Arg(a1,a2,..), Monad Arg(b1,b2,..),..] -> Monad Arg([a1,b1,..],[a2,b2,..])
@@ -206,3 +194,23 @@ function compose() {
 // transpose:				Monad Arg([a1,b1,..],[a2,b2,..]) -> Monad Arg([a1,a2,..], [b1,b2,..], ..)
 
 // The way Elm does it: https://github.com/baconjs/bacon.js/issues/85#issuecomment-17771273
+
+
+Array.prototype.insertSorted = function(el, by) {
+	if (typeof by != "function")
+		by = Object.get(by);
+	var l = this.length,
+		cel = by(el);
+	if (l == 0)
+		this[0] = el;
+	else if (cel < by(this[0])) // check common case in O(1)
+		this.unshift(el);
+	else if (l == 1 || cel >= by(this[l-1]))
+		this.push(el);
+	else
+		// insortBy - see also Array::insort
+		this.splice(1+this.binaryIndexFor(function(a) {
+			var ca = by(a);
+			return +(ca>cle) || -(ca<cel);
+		}), 0, el);
+};

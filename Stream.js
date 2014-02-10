@@ -4,13 +4,13 @@ function Stream(fn) {
 	var listeners = [],
 		priority = 0,
 		stop = null,
-		go = fn;
+		go = fn(fire, setPriority);
 	function add(ls) {
 		listeners.push(ls);
 		ls.priority = prio+1;
 		
 		if (listeners.length == 1)
-			stop = go(fire, setPriority)
+			stop = go();
 		return this;
 	}
 	function remove(ls) {
