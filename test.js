@@ -1,3 +1,4 @@
+/*
 var mouse = getEventStream(document, "mousemove")
 	position = mouse.get("clientX"),
 	barleft = position.map(add(-50)),
@@ -17,6 +18,7 @@ var mult = getMultiEventStream(), // where a couple of events are fired at the s
     counts = mult.tag(num) // but not if we rip an event of it every time `mult` fires
     // Also: (how) Can we get mult events back from doubled?
 
+*/
 // Behavior.object :: {*:(Behavior *)} -> Behavior {*:*}
 /*
 Stream: propagates events. Might be/have a context that changes.
@@ -100,47 +102,7 @@ listening an event should return?
  * lazyness of values
 
 */
-function ContinuationBuilder() {
-	var waiting = [];
-	
-	function next() {
-		if (waiting.length <= 1)
-			return waiting.shift();
-		suspended.priority = waiting[0].priority;
-		return suspended;
-	}
-	function suspended() {
-		var postponed = waiting.shift().call();
-		if (typeof postponed == "function")
-			waiting.insertSorted(postponed, "priority");
-		return next();
-	}
-	this.each = function (arr, cb) {
-		for (var i=0, l=arr.length; i<l; i++) {
-			var cont = cb(arr[i], i);
-			if (typeof cont == "function")
-				waiting.insertSorted(cont, "priority");
-		}
-		return this;
-	};
-	this.add = function(cont) {
-		waiting.insertSorted(cont, "priority");
-		return this;
-	};
-	this.getContinuation = next;
-}
 
-function dispatch(event, listeners, context) {
-	var next = fire(event, listeners, context);
-	while (typeof next == "function") // boing boing boing
-		next = next();                // trampolining is fun!
-	/*
-	var waiting = listeners.slice(),
-		postponed;
-	while (waiting.length)
-		if (typeof (postponed = listeners.shift().call(context, event)) == "function")
-			waiting.insertSorted(postponed, "priority"); */
-}
 function map(fn, listeners) {
 	// stream.listen(map(fn, [...]))
 	return function listener(event) {
@@ -170,7 +132,9 @@ function compose() {
 				if (i < 0) // || continuation.priority <= prio
 					return;
 				steps.splice(i, 1);
-				return fire(values.invoke("shift"));
+				return fire(values.map(function(vs) {
+					return vs.shift();
+				}));
 			}
 			continuation.priority = prio+1;
 			return continuation;
@@ -195,7 +159,7 @@ function compose() {
 			listeners[i] = makeListener(i); 
 		function go() {
 			for (var i=0; i<l; i++) {
-				arguments[i].addEventListener(listeners[i]);
+				args[i].addEventListener(listeners[i]);
 				if (listeners[i].priority > prio) {
 					prio = listeners[i].priority;
 					if (typeof propagatePriority(prio+1) == "function")
