@@ -56,12 +56,14 @@ Invarianten auf dem Graphen:
 * Kreisfreiheit. Kreise können mit einem Prioritätssprung verwirklicht werden, derjenige Knoten hat die Verantwortung für die Semantik
 * priority/subordinacy are used to describe a partial ordering, so that the nodes can be topologically sorted
 * A listener MUST NOT be executed when there is a waiting listener with higher priority
+* The priority of a (yielded) continuation MUST not be changed
+* A listener added during the dispatch is expected not to receive the current value.
+  A listener removed during the dispatch is expected to have received the current value already.
 * 
 
 Problems:
 * unknown priorities: compose(streamPrio1, streamPrio2.bind(()->streamPrioN))
 * propagating priorities should not greedily update whole graph
-* what should happen to waiting continuations/event listeners whose priority has changed?
 * who is allowed to change the priority, and in which direction?
 * when does the priority need to be updated? Imho: after level n, all priorities in n+1 need to have been updated.
                                              or is it: in level n, we update n instead of executing it? NO
@@ -71,10 +73,14 @@ Problems:
                                                         or is it necessary?
                                                    should this be handled by the listenermanager (and the listenercreator)?
                                                    why not simply pass an array of events? - only where expected or what?
-  Use wrappers to "discretetisize" parallel events in own environment with own dispatch method and explicit, "parallel" output
+  Use wrappers to "discretize" parallel events in own environment with own dispatch method and explicit, "parallel" output
 * How does lazy listening work with asynchronous combinators? It does not, async is a kind of output and requires a strict listener
-                                                              The computations may be deferred though, using Lazy.js
-* Adding the first listener starts event propagation - go(). How does the listener receive the current event (if any?)? How is its priority computed and assigned?
+                                                              The computations may be deferred though, using lazyness
+* Adding the first listener starts event propagation - go(). How is its priority computed and assigned?
+* Should a listener receive the current event (if any?) when being installed?
+  What about a listener that is removed?
+  Regardless of yes or no, this must not depend on the priority of the listener and the current state of dispatching at the installation 
+* 
 
 */
 
@@ -91,7 +97,6 @@ function ContinuationBuilder() {
 	var waiting = [];
 	
 	function next() {
-		// @FIXME ensure all waiting have higher priority than the current? Necessary?
 		if (waiting.length <= 1)
 			return waiting.shift();
 		suspended.priority = waiting[0].priority;

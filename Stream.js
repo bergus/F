@@ -6,7 +6,6 @@ function Stream(fn) {
 		stop = null,
 		go = fn(fire, setPriority);
 	function add(ls) {
-		// @TODO: go or push first?
 		if (listeners.length == 0)
 			stop = go();
 			
