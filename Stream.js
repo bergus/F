@@ -44,8 +44,11 @@ function Stream(fn) {
 		});
 	}
 
-	this.addEventListener = add;
-	this.removeEventListener = remove;
+	this.addListener = add;
+	this.removeListener = remove;
+	// @FIXME: Allow synonyms?
+	// this.onItem = add;
+	// this.off = remove; 
 	
 }
 

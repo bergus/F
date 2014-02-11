@@ -46,11 +46,11 @@ watch out:
 */
 /*
 Continuation [extends Function?] {
-	call(c): do what is to be done. Return a Continuation or undefined
+	call(null): do what is to be done. Return a Continuation or undefined
 	priority: lower is more urgent. Must not be changed.
 }
 EventListener extends Continuation {
-	handleEvent(v) extends call(c, v): receive value in context 
+	handleEvent(v) extends call(s: Stream, v): receive value in context 
 	setPriority(p): a new priority level, set by the EventTarget on which the listener is installed
 	                returns Continuation or undefined
 	// better: increasePriority()/decreaseUrgency()? 
@@ -103,16 +103,30 @@ listening an event should return?
 
 */
 
-function map(fn, listeners) {
-	// stream.listen(map(fn, [...]))
-	return function listener(event) {
-		event = fn.apply(this, arguments);
-		return fire(event, listeners, this);
-	};
+function map(fn, stream) {
+	return new Stream(function(fire, propagatePriority) {
+		function listener(v) {
+			return fire(fn(v));
+		}
+		listener.priority = 0;
+		listener.setPriority = function(p) {
+			this.priority = p;
+			return propagatePriority(p).getContinuation();
+		}
+		function go() {
+			stream.addListener(listener);
+			propagatePriority(listener.priority);
+			return stop;
+		}
+		function stop() {
+			stream.removeListener(listener);
+			return go;
+		}
+		return go;
+	});
 }
-function compose() {
-	var args = arguments,
-	    l = args.length;
+function compose(streams) {
+	var l = streams.length;
 	
 	return new Stream(function(fire, propagatePriority) {
 		var listeners = new Array(l),
@@ -159,18 +173,18 @@ function compose() {
 			listeners[i] = makeListener(i); 
 		function go() {
 			for (var i=0; i<l; i++) {
-				args[i].addEventListener(listeners[i]);
+				streams[i].addListener(listeners[i]);
 				if (listeners[i].priority > prio) {
 					prio = listeners[i].priority;
-					if (typeof propagatePriority(prio+1) == "function")
-						throw "propagating priority during go() requires continuation dispatch";
+					propagatePriority(prio+1);
+					// console.assert(typeof propagatePriority(prio+1) == "function", "propagating priority during go() requires continuation dispatch");
 				}
 			}
 			return stop;
 		}
 		function stop() {
 			for (var i=0; i<l; i++) {
-				args[i].removeEventListener(listeners[i]);
+				streams[i].removeListener(listeners[i]);
 			}
 			return go;
 		}

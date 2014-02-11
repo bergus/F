@@ -2,8 +2,8 @@
 Example:
 var c = new Clock(1500),
     b = new Clock(c, 750),
-    a = compose(b, c);
-a.addEventListener(console.log); 
+    a = compose([b, c]);
+a.addListener(console.log); 
 */
 var Clock = (function() {
 	"use strict";
