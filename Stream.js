@@ -85,34 +85,3 @@ function dispatch(fire, event) {
 		next = next();                // trampolining is fun!
 };
 Stream.dispatch = dispatch;
-
-function Clock(from, interval) {
-	if (arguments.length == 1) {
-		interval = from;
-		from = new Date;
-	}
-	var time = from.getTime();
-	this.getTime = function() { return time; };
-	Stream.call(this, function(fire) {
-		var timeout, nexttime;
-		function check() {
-			var t = Date.now();
-			if (t >= nexttime-2) { // @FIXME: Just believe the timeout?
-				Stream.dispatch(fire, t);
-				nexttime += interval;
-			}
-			timeout = setTimeout(check, nexttime-t);
-		}
-		function go() {
-			var t = Date.now();
-			nexttime = t - (t-time) % interval + interval;
-			timeout = setTimeout(check, nexttime-t);
-			return stop;
-		}
-		function stop() {
-			clearTimeout(timeout);
-			return go;
-		}
-		return go;	
-	});
-}
