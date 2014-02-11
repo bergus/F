@@ -36,7 +36,10 @@ Drag'n'Drop: ValueStream of Promises (for drop actions) that fire Progress-Event
 Resettable Timer: ValueStream of Clock-Behaviors or Interval-EventStreams -> flatten to Stream of "reset" and "tick" events
 CircularEvaluation: Fix-point behaviours! Where does the circle start when two of its inputs are changed at the same time?
 
-watch out: bypassing asynchronous computation can be hazardous. compose(fetch(urlB), urlB) leads to invalid state during fetching
+watch out:
+* bypassing asynchronous computation can be hazardous. compose(fetch(urlB), urlB) leads to invalid state during fetching
+* timeouts should be done with a global clock, to prevent unnecessary dispatches when several "branches" do independent timeouts of equal length
+* 
 
 */
 /*
@@ -57,28 +60,32 @@ Invarianten auf dem Graphen:
 * priority/subordinacy are used to describe a partial ordering, so that the nodes can be topologically sorted
 * A listener MUST NOT be executed when there is a waiting listener with higher priority
 * The priority of a (yielded) continuation MUST not be changed
-* A listener added during the dispatch is expected not to receive the current value.
-  A listener removed during the dispatch is expected to have received the current value already.
+* A listener added during the dispatch is expected not to receive the current event.
+  A listener removed during the dispatch is expected to have received the current event already.
 * 
 
 Problems:
 * unknown priorities: compose(streamPrio1, streamPrio2.bind(()->streamPrioN))
 * propagating priorities should not greedily update whole graph
 * who is allowed to change the priority, and in which direction?
-* when does the priority need to be updated? Imho: after level n, all priorities in n+1 need to have been updated.
-                                             or is it: in level n, we update n instead of executing it? NO
-* How do multiple concurrent/parallel events work? Extra handler method
-                                                   or calling handleEvent() multiple times before the next priority level
-                                                      - Am I crazy? This will horribly complicate state in nodes
-                                                        or is it necessary?
-                                                   should this be handled by the listenermanager (and the listenercreator)?
-                                                   why not simply pass an array of events? - only where expected or what?
+* when does the priority need to be updated?
+			Imho: after level n, all priorities in n+1 need to have been updated.
+			or is it: in level n, we update n instead of executing it? NO
+* How do multiple concurrent/parallel events work?
+			Extra handler method or calling handleEvent() multiple times before the next priority level
+			- Am I crazy? This will horribly complicate state in nodes
+			  or is it necessary?
+			should this be handled by the listenermanager (and the listenercreator)?
+			why not simply pass an array of events? - only where expected or what?
   Use wrappers to "discretize" parallel events in own environment with own dispatch method and explicit, "parallel" output
-* How does lazy listening work with asynchronous combinators? It does not, async is a kind of output and requires a strict listener
-                                                              The computations may be deferred though, using lazyness
+* How does lazy listening work with asynchronous combinators?
+			It does not, async is a kind of output and requires a strict listener
+			The computations may be deferred though, using lazyness
 * Adding the first listener starts event propagation - go(). How is its priority computed and assigned?
+			Recursively. After the call to go(), the priority is expected to be known; and can be assigned as usual
 * Should a listener receive the current event (if any?) when being installed?
   What about a listener that is removed?
+  			A Behaviour listener should definitely.
   Regardless of yes or no, this must not depend on the priority of the listener and the current state of dispatching at the installation 
 * 
 
