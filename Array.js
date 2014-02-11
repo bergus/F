@@ -285,6 +285,20 @@ return: this */
 		this.unshift(this.pop());
 	return this;
 };
+/* http://stackoverflow.com/a/14789288/1048572 by rampion:
+// move i elements from the start of the array to the end of the array
+Array.prototype.lcycle = function(i) {
+  xs = this.slice(0,i);
+  ys = this.slice(i);
+  return ys.concat(xs)
+};
+// move i elements from the end of the array to the start of the array
+Array.prototype.rcycle = function(i) {
+  xs = this.slice(0,-i);
+  ys = this.slice(-i);
+  return ys.concat(xs);
+};
+*/
 
 Array.prototype.by = function(key, mult) {
 /* get: property name[, boolean]
@@ -416,13 +430,46 @@ Array.prototype.sortBy = function sortBy(get, ascending) {
 /* get: ( function(item) to return the value to be compared[, false to sort descending] | property-name-"path" for Object.get )
 		sorts the array by a value, determined from an item by the get function.
 		If the first of these values is a number (or can be converted to one), the sort will be numerical. Otherwise the sort is alphabetical, ignoring Uppercase.
-		@TODO: Use toLocaleLowerCase(), localeCompare()
+		@TODO: Use toLocaleLowerCase(), Function.prototype.call.bind(String.prototype.localeCompare)
 		@TODO: get returning undefined
 return: this */
 	if (typeof get != "function") {
 		get = Object.get.apply(null, arguments);
 		ascending = true;
 	}
+/* options:
+asce[ndi]ng - a
+desce[ndi]ng - d
+numer[i]c[all]y - n
+loc[a]le - l
+ig[n]oreUpperc[a]se - i
+
+	if (/i/.test(options))
+		get = (function(get, tlc){
+			return function(a) {
+				return String.prototype[tlc].call(get(a));
+			};
+		})(get, /l/.test(options) ? "toLocaleLowerCase" : "toLowerCase");
+	if (/n/.test(options))
+		var compare = function(a, b) {
+			return get(a) - get(b);
+		};
+	else if (/l/.test(options))
+		compare = function(a, b) {
+			return String.prototype.localeCompare.call(get(a), get(b));
+		}
+	else
+		compare = function(a, b) {
+			return get(a)<get(b) - get(a)>get(b); 
+		}
+	if (/d/.test(options))
+		compare = (function(comp) {
+			return function(a, b) {
+				return - comp(a, b); // or comp(b, a)
+			};
+		})(compare);
+	return this.sort(compare);
+*/
 	if (this[0] && typeof get(this[0]).valueOf() == "number")
 		return this.sort( ascending===false // assume ascending if not disabled (descending)
 			? function(a,b) {return get(b) - get(a);}
@@ -445,7 +492,7 @@ Array.prototype.sortedBy = function sortedBy(get, ascending) {
 		sorts the array by a value, determined from an item by the get function.
 		If the first of these values is a number (or can be converted to one), the sort will be numerical. Otherwise the sort is alphabetical, ignoring Uppercase.
 		does execute get() only once per array item, and is therefore faster than .sortBy()
-		@TODO: Use toLocaleLowerCase(), localeCompare()
+		@TODO: Use toLocaleLowerCase(), Function.prototype.call.bind(String.prototype.localeCompare)
 		@TODO: get returning undefined
 return: a new, sorted Array */
 	if (typeof get != "function")
