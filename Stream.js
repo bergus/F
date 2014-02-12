@@ -88,3 +88,46 @@ function dispatch(fire, event) {
 		next = next();                // trampolining is fun!
 };
 Stream.dispatch = dispatch;
+
+/* @implements EventTarget */
+function EventStream(fn, context) {
+    Stream.apply(this, arguments);
+    this.context = context || this;
+}
+EventStream.prototype = Object.create(Stream.prototype, {constructor:{value:EventStream}});
+
+EventStream.addEventListener = function addEventListener(type, handler) {
+    if (handler !== Object(handler))
+        return;
+    var that = this;
+    function listener(e) {
+        if (e.type !== type)
+            return;
+        if (typeof handler == "function")
+            return handler.call(that.context, e);
+        else
+            return handler.handleEvent(e);
+    }
+    listener.setPriority = handler.setPriority.bind(handler);
+    this.addListener(listener);
+    handler.priority = listener.priority;
+    handler._removeFromEventTarget = (function(remove) {
+        return function(ta, ty) {
+            if (ty == type && ta == that) {
+                that.removeListener(listener);
+                this._removeFromEventTarget = remove;
+            } else if (typeof remove == "function")
+                remove.call(this, ta, ty);
+        }
+    })(handler._removeFromEventTarget);
+    return function remove() {
+        that.removeListener(listener);
+    };
+};
+EventStream.removeEventListener = function removeEventListener(type, handler) {
+    if (typeof handler._removeFromEventTarget == "function")
+        handler._removeFromEventTarget(this, type);
+};
+EventStream.dispatchEvent = function() {
+    throw new Error("InvalidStateError: EventStreams::dispatchEvent must not be invoked from outside");
+};
