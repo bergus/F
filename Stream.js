@@ -62,9 +62,11 @@ function ContinuationBuilder() {
 		return suspended;
 	}
 	function suspended() {
-		var postponed = waiting.shift().call();
-		if (typeof postponed == "function")
-			waiting.insertSorted(postponed, "priority");
+	    do {
+    		var postponed = waiting.shift().call();
+    		if (typeof postponed == "function")
+    			waiting.insertSorted(postponed, "priority");
+    	} while (waiting[0].priority == suspended.priority)
 		return next();
 	}
 	this.each = function (arr, cb) {

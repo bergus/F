@@ -30,7 +30,12 @@ Behavior / ValueStream: represents a changing value. Can have initial value (def
 						Promise-like error handling?
 
 Collections: streams with add/remove(/update) events in context of a set or list or map
+ a collection can have an ordering, like fifo, lifo (stack), sortedBy, or custom.
  interesting temporal manipulations like filtering by "add" time window, or N most recent values
+ Example: an ajax request queue
+  var q = new EventCollection("queue"); make=promise(q.dispatch(type=add,value=requestparams); |->e.isExecuted); new Interval(500).mapSend(q,action=shift).executeEach()
+  with side effect: q.get(length).displayAt(...)
+  q.removeScanl(x->execute x)?
 */
 
 /* Examples:
@@ -62,6 +67,7 @@ Invarianten auf dem Graphen:
 * priority/subordinacy are used to describe a partial ordering, so that the nodes can be topologically sorted
 * A listener MUST NOT be executed when there is a waiting listener with higher priority
 * The priority of a (yielded) continuation MUST not be changed
+* A continuation MUST NOT yield a continuation with lower priority than itself
 * A listener added during the dispatch is expected not to receive the current event.
   A listener removed during the dispatch is expected to have received the current event already.
 * 
