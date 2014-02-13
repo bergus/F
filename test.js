@@ -68,8 +68,10 @@ Invarianten auf dem Graphen:
 * A listener MUST NOT be executed when there is a waiting listener with higher priority
 * The priority of a (yielded) continuation MUST not be changed
 * A continuation MUST NOT yield a continuation with lower priority than itself
-* A listener added during the dispatch is expected not to receive the current event.
-  A listener removed during the dispatch is expected to have received the current event already.
+* An event listener added during the dispatch is expected not to receive the current event.
+  An event listener removed during the dispatch is expected to have received the current event already. (i.e. should wait for it!)
+  A  value listener added during the dispatch is expected     to receive the current value (at some point during the dispatch)
+  A  value listener removed during the dispatch is not expected to know anything
 * 
 
 Problems:
@@ -95,6 +97,9 @@ Problems:
   What about a listener that is removed?
   			A Behaviour listener should definitely.
   Regardless of yes or no, this must not depend on the priority of the listener and the current state of dispatching at the installation 
+* How is the outside world representated? Isn't there a circular event stream?
+            run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b
+            @TODO check FRP paper on exact type signature
 * 
 
 */
@@ -183,7 +188,7 @@ function compose(streams) {
 				if (listeners[i].priority > prio) {
 					prio = listeners[i].priority;
 					propagatePriority(prio+1);
-					// console.assert(typeof propagatePriority(prio+1) == "function", "propagating priority during go() requires continuation dispatch");
+					// console.assert(typeof propagatePriority(prio+1) == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
 				}
 			}
 			return stop;
