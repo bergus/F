@@ -15,7 +15,8 @@ Stream {
 	* propagates events. Might be/have a context that changes.
 }
 EventStream extends Stream {
-	* fires discrete events. Those should have a `type` or be Error instances otherwise.
+	* fires discrete events. Those should have a `type` property or be Error instances otherwise.
+	  Errors and other non-events do have a type == undefined.
 }
 Behavior / ValueStream extends Stream {
 	* represents a changing value. Can have initial value (defaults to undefined). Does not propagate unchanged values.  
