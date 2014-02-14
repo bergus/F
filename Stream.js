@@ -136,3 +136,111 @@ EventStream.prototype.removeEventListener = function removeEventListener(type, h
 EventStream.prototype.dispatchEvent = function() {
     throw new Error("InvalidStateError: EventStreams::dispatchEvent must not be invoked from outside");
 };
+
+function map(fn, stream) {
+    return new Stream(function(fire, propagatePriority) {
+        function listener(v) {
+            return fire(fn(v));
+        }
+        listener.priority = 0;
+        listener.setPriority = function(p) {
+            this.priority = p;
+            return propagatePriority(p).getContinuation();
+        }
+        function go() {
+            stream.addListener(listener);
+            propagatePriority(listener.priority);
+            return stop;
+        }
+        function stop() {
+            stream.removeListener(listener);
+            return go;
+        }
+        return go;
+    });
+}
+function compose(streams) {
+    var l = streams.length;
+    
+    return new Stream(function(fire, propagatePriority) {
+        var listeners = new Array(l),
+            prio = 0; // priority of the listeners
+            steps = [], // @TODO: simple counter instead of set of active steps?
+            values = new Array(l); // @FIXME array of arrays of arguments
+        function setPriority(p) {
+            if (p <= prio || p <= this.priority) return;
+            prio = this.priority = p;
+            propagatePriority(prio+1).each(steps, function(_, i) {
+                return steps[i] = makeStep();
+            }).getContinuation();
+        }
+        function makeStep() {
+            function continuation() {
+                var i = steps.indexOf(continuation);
+                if (i < 0) // || continuation.priority <= prio
+                    return;
+                steps.splice(i, 1);
+                return fire(values.map(function(vs) {
+                    return vs.shift();
+                }));
+            }
+            continuation.priority = prio+1;
+            return continuation;
+        }
+        function makeListener(i) {
+            function listener(v) {
+                if (i in values)
+                    values[i].push(v);
+                else
+                    values[i] = [v];
+                    
+                if (values[i].length > steps.length) {
+                    var last = makeStep();
+                    steps.push(last);
+                    return last;
+                }
+            }
+            listener.setPriority = setPriority;
+            return listener;
+        }
+        for (var i=0; i<l; i++)
+            listeners[i] = makeListener(i); 
+        function go() {
+            for (var i=0; i<l; i++) {
+                streams[i].addListener(listeners[i]);
+                if (listeners[i].priority > prio) {
+                    prio = listeners[i].priority;
+                    propagatePriority(prio+1);
+                    // console.assert(typeof propagatePriority(prio+1) == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
+                }
+            }
+            return stop;
+        }
+        function stop() {
+            for (var i=0; i<l; i++) {
+                streams[i].removeListener(listeners[i]);
+            }
+            return go;
+        }
+        return go;
+    });
+}
+
+Array.prototype.insertSorted = function(el, by) {
+    if (typeof by != "function")
+        by = Object.get(by);
+    var l = this.length,
+        cel = by(el);
+    if (l == 0)
+        this[0] = el;
+    else if (cel < by(this[0])) // check common case in O(1)
+        this.unshift(el);
+    else if (l == 1 || cel >= by(this[l-1]))
+        this.push(el);
+    else
+        // insortBy - see also Array::insort
+        this.splice(1+this.binaryIndexFor(function(a) {
+            var ca = by(a);
+            return +(ca>cle) || -(ca<cel);
+        }), 0, el);
+};
