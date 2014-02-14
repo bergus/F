@@ -46,7 +46,7 @@ function Stream(fn) {
 
 	this.addListener = add;
 	this.removeListener = remove;
-	// @FIXME: Allow synonyms?
+	// @TODO: Allow synonyms?
 	// this.onItem = add;
 	// this.off = remove; 
 	
@@ -98,7 +98,7 @@ function EventStream(fn, context) {
 }
 EventStream.prototype = Object.create(Stream.prototype, {constructor:{value:EventStream}});
 
-EventStream.addEventListener = function addEventListener(type, handler) {
+EventStream.prototype.addEventListener = function addEventListener(type, handler) {
     if (handler !== Object(handler))
         return;
     var that = this;
@@ -114,10 +114,13 @@ EventStream.addEventListener = function addEventListener(type, handler) {
     this.addListener(listener);
     handler.priority = listener.priority;
     handler._removeFromEventTarget = (function(remove) {
-        return function(ta, ty) {
+        return function self(ta, ty) {
+            // @FIXME: avoid memory leaks of references to Streams from which the listener has been removed already
+            //         or where _removeFromEventTarget could not be resetted  
             if (ty == type && ta == that) {
                 that.removeListener(listener);
-                this._removeFromEventTarget = remove;
+                if (this._removeFromEventTarget == self)
+                    this._removeFromEventTarget = remove;
             } else if (typeof remove == "function")
                 remove.call(this, ta, ty);
         }
@@ -126,10 +129,10 @@ EventStream.addEventListener = function addEventListener(type, handler) {
         that.removeListener(listener);
     };
 };
-EventStream.removeEventListener = function removeEventListener(type, handler) {
+EventStream.prototype.removeEventListener = function removeEventListener(type, handler) {
     if (typeof handler._removeFromEventTarget == "function")
         handler._removeFromEventTarget(this, type);
 };
-EventStream.dispatchEvent = function() {
+EventStream.prototype.dispatchEvent = function() {
     throw new Error("InvalidStateError: EventStreams::dispatchEvent must not be invoked from outside");
 };

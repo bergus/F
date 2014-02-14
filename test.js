@@ -49,6 +49,13 @@ watch out:
 * 
 
 */
+/* Names:
+Stream Flow Behaviour List Sequence Node Bus Property Eventstream Signal Series Pipe Channel EventEmitter
+data item event element value packet error
+
+For literature see https://en.wikipedia.org/wiki/Functional_reactive_programming
+
+*/
 /*
 Continuation [extends Function?] {
 	call(null): do what is to be done. Return a Continuation or undefined
@@ -109,7 +116,7 @@ Problems:
 listening an event should return?
  * the priority level
  * the current value
- * the stop function
+ * the unlisten function
  * lazyness of values
 
 */
