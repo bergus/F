@@ -53,8 +53,7 @@ listening to an event should return?
 
   An event listener added during the dispatch is expected not to receive the current event.
   An event listener removed during the dispatch is expected to have received the current event already. (i.e. should wait for it!)
-  A  value listener added during the dispatch is expected     to receive the current value (at some point during the dispatch)
-  	would it be allowed to get called twice, i.e. with old and new values?
+  A  value listener added during the dispatch is expected     to receive the current value, which might be the old or new value
   A  value listener removed during the dispatch is not expected to know anything
 
 Problems (and suggested solutions)
@@ -89,9 +88,9 @@ Problems (and suggested solutions)
 			A Behaviour listener should definitely.
   Regardless of yes or no, this must not depend on the priority of the listener and the current state of dispatching at the installation
 * How are listeners attached during dispatch phase?
-			The behaviour should be defined explicitly by used method, which may return a Continuation for the action
 			see proposal under #thoughts.
-			The Continuation would have a priority of p+1 to ensure installing the listener after the event has fired. The continuation would need to have a `setPriority` listener on the Stream
+			A behaviour listener could happen to be called multiple times for initialisation, but should only use the last of these values
+			Identity is expected: `anyStream.flatMap(_ -> someStream) = someStream`
 * 
  
 * How is the outside world representated? Isn't there a circular event stream?
