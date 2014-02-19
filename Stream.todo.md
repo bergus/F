@@ -59,7 +59,7 @@ listening to an event should return?
 Problems (and suggested solutions)
 ----------------------------------
 
-* unknown priorities: compose(streamPrio1, streamPrio2.bind(()->streamPrioN))
+* unknown priorities: `compose(streamPrio1, streamPrio2.bind(()->streamPrioN))`
 			Propagate priorities as well.
 * propagating priorities should not greedily update whole graph
 * who is allowed to change the priority, and in which direction?
@@ -74,15 +74,19 @@ Problems (and suggested solutions)
 			why not simply pass an array of events? - only where expected or what?
   Use wrappers to "discretize" parallel events in own environment with own dispatch method and explicit, "parallel" output
 * Do ValueStreams update only for the last value in a sequence? No - compromises state. "SkipUpdate" might be an option for some behaviours, evaluating to a single propagated value.
-                                                               of parallel events?  Yes. There is no state in between. 
+                                                               of parallel events?  Yes. There is no state in between.
+* Do multiple, concurrently propagated values make sense in ValueStreams at all? Which one should be the "last", persisting one?
 * How does lazy listening work with asynchronous combinators?
 			It does not, async is a kind of output and requires a strict listener
 			The computations may be deferred though, using lazyness
 * Should ValueStreams have Promise-like error handling?
 			Propagating Error objects instead of arguments objects could work fine.
 
-* Adding the first listener starts event propagation - go(). How is its priority computed and assigned?
-			Recursively. After the call to go(), the priority is expected to be known; and can be assigned as usual
+* Adding the first listener starts event propagation - `go()`. How is its priority computed and assigned?
+			Recursively. After the call to `go()`, the priority is expected to be known; and can be assigned as usual
+* How to detect circles in the priority DAG
+  How to detect circles in `valueOf()` calls
+			Putting a lock on `setPriority()`?
 * Should a listener receive the current event (if any?) when being installed?
   What about a listener that is removed?
 			A Behaviour listener should definitely.
@@ -94,7 +98,7 @@ Problems (and suggested solutions)
 * 
  
 * How is the outside world representated? Isn't there a circular event stream?
-			run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b
+			`run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b`
 			@TODO check FRP paper on exact type signature
 * 
 
