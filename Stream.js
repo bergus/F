@@ -47,7 +47,7 @@ function Stream(fn) {
 
 	this.addListener = add;
 	this.removeListener = remove;
-	// @FIXME: Allow synonyms?
+	// @TODO: Allow synonyms?
 	// this.onItem = add;
 	// this.off = remove; 
 	
@@ -93,7 +93,7 @@ function EventStream(fn, context) {
 }
 EventStream.prototype = Object.create(Stream.prototype, {constructor:{value:EventStream}});
 
-EventStream.addEventListener = function addEventListener(type, handler) {
+EventStream.prototype.addEventListener = function addEventListener(type, handler) {
     if (handler !== Object(handler))
         return;
     var that = this;
@@ -109,10 +109,13 @@ EventStream.addEventListener = function addEventListener(type, handler) {
     this.addListener(listener);
     handler.priority = listener.priority;
     handler._removeFromEventTarget = (function(remove) {
-        return function(ta, ty) {
+        return function self(ta, ty) {
+            // @FIXME: avoid memory leaks of references to Streams from which the listener has been removed already
+            //         or where _removeFromEventTarget could not be resetted  
             if (ty == type && ta == that) {
                 that.removeListener(listener);
-                this._removeFromEventTarget = remove;
+                if (this._removeFromEventTarget == self)
+                    this._removeFromEventTarget = remove;
             } else if (typeof remove == "function")
                 remove.call(this, ta, ty);
         }
@@ -121,31 +124,34 @@ EventStream.addEventListener = function addEventListener(type, handler) {
         that.removeListener(listener);
     };
 };
-EventStream.removeEventListener = function removeEventListener(type, handler) {
+EventStream.prototype.removeEventListener = function removeEventListener(type, handler) {
     if (typeof handler._removeFromEventTarget == "function")
         handler._removeFromEventTarget(this, type);
 };
-EventStream.dispatchEvent = function() {
+EventStream.prototype.dispatchEvent = function() {
     throw new Error("InvalidStateError: EventStream.dispatchEvent must not be invoked from outside");
 };
 
 
 function ValueStream(fn) {
-    // @TODO: code duplication 
+    // @TODO: code duplication (remove, setPriority)
     var that = this,
+        value = [],
         listeners = [],
-        value = null,
         priority = 0,
         stop = null,
         go = fn(fire, setPriority);
+        // fire SHOULD be invoked at any time to notify the stream of a new current value
+        // it is EXPECTED that this happens during go() to initialise the value, and CAN even happen during fn()
+        // it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one  
     function add(ls) {
         if (listeners.length == 0)
             stop = go();
-            
+        
+        ls.apply(that.context, value);
         listeners.push(ls);
         if (!(ls.priority >= priority))
             ls.priority = priority;
-        // @TODO: pass current value (that might not yet have arrived)
         return this;
     }
     function remove(ls) {
@@ -157,18 +163,18 @@ function ValueStream(fn) {
         }
         return this;
     }
-    function fire(val) {
+    function fire() {
         // invokes all given listeners with arguments and context
         // returns: Continuation or undefined
-        value = val;
+        value = arguments; // @TODO: Should fire() take arguments or a single args array?
         return new ContinuationBuilder().each(listeners, function(l) {
-            return l.apply(that.context, value);
+            return l.apply(that.context, value); // @TODO: handle errors
         }).getContinuation();
     }
     function setPriority(p) {
         // updates the priority of the listeners
         if (p < priority)
-            throw "ValueStream|setPriority: Reducing priority is not designed (yet)";
+            throw "Stream|setPriority: Reducing priority is not designed (yet)";
         if (p == priority)
             return;
         priority = p;
@@ -190,21 +196,23 @@ function ValueStream(fn) {
         if (dispatcher.isDispatching)
             while (dispatcher.priority < priority)
                 dispatcher.continueDispatching();
-        return value;
+        return value[0]; // @TODO: How to handle multiple values?
     }
 }
+ValueStream.prototype = Object.create(Stream.prototype, {constructor:{value:ValueStream}});
+
 ValueStream.of = function(fn) {
     return new ValueStream(function(fire, propagatePriority) {
-        debugger;
-        
-        var watching = false;
+        var watching = false,
+            deps = [],
+            prio = 0;
         function execute() {
             if (!watching)
                 return dispatcher.active; // second run during continueDispatch 
             watching = false;
             while (deps.length)
                 deps.pop().removeListener(listener);
-            deps = dispatcher.evaluate(fn, listener);
+            return fire(dispatcher.evaluate(fn, deps, listener));
         }
         execute.priority = prio+1;
         function listener() { // does not take a value
@@ -216,15 +224,16 @@ ValueStream.of = function(fn) {
             return propagatePriority(prio+1); // @FIXME: could this be unnecessary?
         };
         
-        var deps = dispatcher.evaluate(fn, listener); // assuming we're not currently dispatching. @TODO?
-        var prio = listener.priority;
-        propagatePriority(prio+1);
         
-        function go(){
-            execute();
+        function go() {
+            fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
+            prio = listener.priority;
+            propagatePriority(prio+1);
             return stop;
         }
         function stop(){
+            while (deps.length)
+                deps.pop().removeListener(listener);
             return go;
         }
         return go;
@@ -236,17 +245,17 @@ var dispatcher = {
     next: null,
     active: {}, // a token
     isDispatching: false,
-    evaluate: function(fn, listener) {
-        var old = this.evaluating, // stacking :-)
-            deps = this.evaluating = [];
+    evaluate: function(fn, deps, listener) {
+        var old = this.evaluating; // stacking :-)
+        this.evaluating = deps; // @FIXME: assume empty
         deps.add = function(d) {
             this.push(d);
             d.addListener(listener);
             listener.setPriority(listener.priority); // @FIXME: How to propagate this?
         }
-        fn();
+        var res = fn();
         this.evaluating = old; // restore
-        return deps;
+        return res;
     },
     continueDispatching: function(){
         if (typeof dispatcher.next == "function") { // boing boing boing
@@ -255,7 +264,6 @@ var dispatcher = {
         }
     },
     start: function dispatch(next) {
-        debugger;
         dispatcher.isDispatching = true;
         dispatcher.next = next;
         while (typeof next == "function") { // boing boing boing
@@ -267,3 +275,132 @@ var dispatcher = {
     }
 };
 Stream.dispatch = dispatcher.start;
+
+function map(fn, stream) {
+    return new Stream(function(fire, propagatePriority) {
+        function listener(v) {
+            return fire(fn(v));
+        }
+        listener.priority = 0;
+        listener.setPriority = function(p) {
+            this.priority = p;
+            return propagatePriority(p).getContinuation();
+        }
+        function go() {
+            stream.addListener(listener);
+            propagatePriority(listener.priority);
+            return stop;
+        }
+        function stop() {
+            stream.removeListener(listener);
+            return go;
+        }
+        return go;
+    });
+}
+function compose(streams) {
+    var l = streams.length;
+    
+    return new Stream(function(fire, propagatePriority) {
+        var listeners = new Array(l),
+            prio = 0; // priority of the listeners
+            steps = [], // @TODO: simple counter instead of set of active steps?
+            values = new Array(l); // @FIXME array of arrays of arguments
+        function setPriority(p) {
+            if (p <= prio || p <= this.priority) return;
+            prio = this.priority = p;
+            propagatePriority(prio+1).each(steps, function(_, i) {
+                return steps[i] = makeStep();
+            }).getContinuation();
+        }
+        function makeStep() {
+            function continuation() {
+                var i = steps.indexOf(continuation);
+                if (i < 0) // || continuation.priority <= prio
+                    return;
+                steps.splice(i, 1);
+                return fire(values.map(function(vs) {
+                    return vs.shift();
+                }));
+            }
+            continuation.priority = prio+1;
+            return continuation;
+        }
+        function makeListener(i) {
+            function listener(v) {
+                if (i in values)
+                    values[i].push(v);
+                else
+                    values[i] = [v];
+                    
+                if (values[i].length > steps.length) {
+                    var last = makeStep();
+                    steps.push(last);
+                    return last;
+                }
+            }
+            listener.setPriority = setPriority;
+            return listener;
+        }
+        for (var i=0; i<l; i++)
+            listeners[i] = makeListener(i); 
+        function go() {
+            for (var i=0; i<l; i++) {
+                streams[i].addListener(listeners[i]);
+                if (listeners[i].priority > prio) {
+                    prio = listeners[i].priority;
+                    propagatePriority(prio+1);
+                    // console.assert(typeof propagatePriority(prio+1) == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
+                }
+            }
+            return stop;
+        }
+        function stop() {
+            for (var i=0; i<l; i++) {
+                streams[i].removeListener(listeners[i]);
+            }
+            return go;
+        }
+        return go;
+    });
+}
+
+function sample(eventStream, fn) {
+    return new ValueStream(function(fire, setPriority) {
+        function listener() {
+            fire(fn())
+        }
+        listener.setPriority = function(p) {
+            setPriority(p+1); // @TODO: really needed?
+        };
+        function go() {
+            eventStream.addListener(listener);
+            listener();
+            return stop;
+        }
+        function stop() {
+            eventStream.removeListener(listener);
+            return go;
+        }
+        return go;
+    });
+}
+
+Array.prototype.insertSorted = function(el, by) {
+    if (typeof by != "function")
+        by = Object.get(by);
+    var l = this.length,
+        cel = by(el);
+    if (l == 0)
+        this[0] = el;
+    else if (cel < by(this[0])) // check common case in O(1)
+        this.unshift(el);
+    else if (l == 1 || cel >= by(this[l-1]))
+        this.push(el);
+    else
+        // insortBy - see also Array::insort
+        this.splice(1+this.binaryIndexFor(function(a) {
+            var ca = by(a);
+            return +(ca>cle) || -(ca<cel);
+        }), 0, el);
+};
