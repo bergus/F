@@ -65,7 +65,7 @@ function ContinuationBuilder() {
 	function suspended() {
 	    do {
     		var postponed = waiting[0].call();
-    		if (postponed != dispatcher.active) waiting.shift();
+    		if (postponed != dispatcher.active) waiting.shift(); // @FIXME: possible non-terminating loop
     		if (typeof postponed == "function")
     			waiting.insertSorted(postponed, "priority");
     	} while (waiting[0].priority == suspended.priority)
@@ -143,7 +143,8 @@ function ValueStream(fn) {
         go = fn(fire, setPriority);
         // fire SHOULD be invoked at any time to notify the stream of a new current value
         // it is EXPECTED that this happens during go() to initialise the value, and CAN even happen during fn()
-        // it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one  
+        // it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one
+        // don't forget to `return` the continuation which `fire()` yields
     function add(ls) {
         if (listeners.length == 0)
             stop = go();
@@ -208,11 +209,12 @@ ValueStream.of = function(fn) {
             prio = 0;
         function execute() {
             if (!watching)
-                return dispatcher.active; // second run during continueDispatch 
-            watching = false;
+                return dispatcher.active; // second run during continueDispatch
             while (deps.length)
                 deps.pop().removeListener(listener);
-            return fire(dispatcher.evaluate(fn, deps, listener));
+            var cont = fire(dispatcher.evaluate(fn, deps, listener)); 
+            watching = false;
+            return cont;
         }
         execute.priority = prio+1;
         function listener() { // does not take a value
@@ -226,7 +228,9 @@ ValueStream.of = function(fn) {
         
         
         function go() {
+            watching = true; // no need to feed execute from the listeners
             fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
+            watching = false;
             prio = listener.priority;
             propagatePriority(prio+1);
             return stop;
@@ -239,6 +243,7 @@ ValueStream.of = function(fn) {
         return go;
     })
 }
+// @TODO: use module pattern, remove unnecessary values
 var dispatcher = {
     stack: [],
     priority: 0,
@@ -249,6 +254,8 @@ var dispatcher = {
         var old = this.evaluating; // stacking :-)
         this.evaluating = deps; // @FIXME: assume empty
         deps.add = function(d) {
+            // @TODO: more intelligent handling of re-used dependencies
+            // @FIXME: handling of multiple-used dependencies
             this.push(d);
             d.addListener(listener);
             listener.setPriority(listener.priority); // @FIXME: How to propagate this?
@@ -368,7 +375,7 @@ function compose(streams) {
 function sample(eventStream, fn) {
     return new ValueStream(function(fire, setPriority) {
         function listener() {
-            fire(fn())
+            return fire(fn())
         }
         listener.setPriority = function(p) {
             setPriority(p+1); // @TODO: really needed?
