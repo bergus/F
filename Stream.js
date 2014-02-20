@@ -137,6 +137,62 @@ EventStream.prototype.dispatchEvent = function() {
     throw new Error("InvalidStateError: EventStreams::dispatchEvent must not be invoked from outside");
 };
 
+
+function ValueStream(fn) {
+    // @TODO: code duplication (remove, setPriority)
+    var that = this,
+        value = [],
+        listeners = [],
+        priority = 0,
+        stop = null,
+        go = fn(fire, setPriority);
+        // fire SHOULD be invoked at any time to notify the stream of a new current value
+        // it is EXPECTED that this happens during go() to initialise the value, and CAN even happen during fn()
+        // it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one  
+    function add(ls) {
+        if (listeners.length == 0)
+            stop = go();
+        
+        ls.apply(that.context, value);
+        listeners.push(ls);
+        ls.priority = priority;
+        return this;
+    }
+    function remove(ls) {
+        var i = listeners.indexOf(ls);
+        if (i >= 0) {
+            listeners.splice(i, 1);
+            if (listeners.length == 0)
+                go = stop();
+        }
+        return this;
+    }
+    function fire() {
+        // invokes all given listeners with value and context
+        // returns: Continuation or undefined
+        value = arguments;
+        return new ContinuationBuilder().each(listeners, function(l) {
+            return l.apply(that.context, value);
+        }).getContinuation();
+    }
+    function setPriority(p) {
+        // updates the priority of the listeners
+        if (p < priority)
+            throw "Stream|setPriority: Reducing priority is not designed (yet)";
+        if (p == priority)
+            return;
+        priority = p;
+        return new ContinuationBuilder().each(listeners, function(l) {
+            if (l.priority < priority)
+                return l.setPriority(priority);
+        });
+    }
+
+    this.addListener = add;
+    this.removeListener = remove;
+}
+ValueStream.prototype = Object.create(Stream.prototype, {constructor:{value:ValueStream}});
+
 function map(fn, stream) {
     return new Stream(function(fire, propagatePriority) {
         function listener(v) {
@@ -220,6 +276,27 @@ function compose(streams) {
             for (var i=0; i<l; i++) {
                 streams[i].removeListener(listeners[i]);
             }
+            return go;
+        }
+        return go;
+    });
+}
+
+function sample(eventStream, fn) {
+    return new ValueStream(function(fire, setPriority) {
+        function listener() {
+            fire(fn())
+        }
+        listener.setPriority = function(p) {
+            setPriority(p+1); // @TODO: really needed?
+        };
+        function go() {
+            eventStream.addListener(listener);
+            listener();
+            return stop;
+        }
+        function stop() {
+            eventStream.removeListener(listener);
             return go;
         }
         return go;
