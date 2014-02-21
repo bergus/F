@@ -19,7 +19,7 @@ var Clock = (function() {
 		    nexttime = timers[0].time;
 		if (t >= nexttime-2) { // @FIXME: Just believe the timeout?
 			var c = new ContinuationBuilder();
-			do {
+			do { // invariant: timers.length does not decrease
 				var timer = timers.shift();
 				c.add(timer.fire.bind(null, t));
 				timers.insertSorted(timer.next(), "time");

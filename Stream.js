@@ -63,9 +63,14 @@ function ContinuationBuilder() {
 		return suspended;
 	}
 	function suspended() {
+	    // invariant: suspended.priority == waiting[0].priority
+	    // @FIXME: On re-entry via continueDispatch, this may be flawed if waiting is not shifted properly
 	    do {
     		var postponed = waiting[0].call();
     		if (postponed != dispatcher.active) waiting.shift(); // @FIXME: possible non-terminating loop
+    		// else move to the back of continuations with this priority ???
+    		// should "still" be in the first place (where expected) when call() returns
+    		// Should no continuations on the path should be "emptied" during continueDispatch so that it can "return" normally? No, not necessary.
     		if (typeof postponed == "function")
     			waiting.insertSorted(postponed, "priority");
     	} while (waiting[0].priority == suspended.priority)
@@ -190,13 +195,12 @@ function ValueStream(fn) {
 
     this.valueOf = function() {
         if (!dispatcher.evaluating) {
-            console.warn("ValueStream.valueOf can only be invoked during a dispatch phase");
+            console.warn("ValueStream.valueOf can only be invoked during an evaluation phase");
             return this;
         }
-        dispatcher.evaluating.add(this);
+        dispatcher.evaluating.add(this); // triggers computation by adding a listener
         if (dispatcher.isDispatching)
-            while (dispatcher.priority < priority)
-                dispatcher.continueDispatching();
+            dispatcher.continueUntil(function(){ return priority; }); // dispatch (fire, trigger the listener) and propagate priorities until own priority is matched  
         return value[0]; // @TODO: How to handle multiple values?
     }
 }
@@ -207,28 +211,32 @@ ValueStream.of = function(fn) {
         var watching = false,
             deps = [],
             prio = 0;
+        // @TODO: What do we really need to wait for (in terms of listener.priority)?
+        //        * re-evaluating on the first listener works because it will continueDispatch until it's time, but that might be unnecessary
+        //        * re-evaluating after the last listeners' level may be unnecessary late when that is no more a dependency 
         function execute() {
             if (!watching)
                 return dispatcher.active; // second run during continueDispatch
-            while (deps.length)
-                deps.pop().removeListener(listener);
             var cont = fire(dispatcher.evaluate(fn, deps, listener)); 
             watching = false;
             return cont;
         }
         execute.priority = prio+1;
+        
         function listener() { // does not take a value
+            // fires when any of the dependencies does update or initialize
             if (!watching) { watching = true; return execute; } // but yields the update continuation
         };
         listener.setPriority = function(p) {
+            if (p < prio)
+                return;
             prio = this.priority = p; // @FIXME: increases the priority on all dependencies. Doesn't matter, does it?
             execute.priority = prio+1; // @FIXME: do we need a new execute function? I guess so.
             return propagatePriority(prio+1); // @FIXME: could this be unnecessary?
         };
         
-        
         function go() {
-            watching = true; // no need to feed execute from the listeners
+            watching = true; // no need to yield `execute` from the listeners
             fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
             watching = false;
             prio = listener.priority;
@@ -243,18 +251,16 @@ ValueStream.of = function(fn) {
         return go;
     })
 }
-// @TODO: use module pattern, remove unnecessary values
-var dispatcher = {
-    stack: [],
-    priority: 0,
-    next: null,
-    active: {}, // a token
-    isDispatching: false,
-    evaluate: function(fn, deps, listener) {
+var dispatcher = (function() {
+    var next;
+    
+    function evaluate(fn, deps, listener) {
         var old = this.evaluating; // stacking :-)
-        this.evaluating = deps; // @FIXME: assume empty
+        // @TODO: more intelligent handling of re-used dependencies
+        while (deps.length)
+            deps.pop().removeListener(listener);
+        this.evaluating = deps;
         deps.add = function(d) {
-            // @TODO: more intelligent handling of re-used dependencies
             // @FIXME: handling of multiple-used dependencies
             this.push(d);
             d.addListener(listener);
@@ -263,24 +269,27 @@ var dispatcher = {
         var res = fn();
         this.evaluating = old; // restore
         return res;
-    },
-    continueDispatching: function(){
-        if (typeof dispatcher.next == "function") { // boing boing boing
-            dispatcher.next = dispatcher.next();    // trampolining is fun!
-            dispatcher.priority = dispatcher.next.priority;
-        }
-    },
-    start: function dispatch(next) {
+    }
+    function startDispatching(n) {
         dispatcher.isDispatching = true;
-        dispatcher.next = next;
-        while (typeof next == "function") { // boing boing boing
-            dispatcher.priority = next.priority;
-            next = next();                  // trampolining is fun!
-            dispatcher.next = next;
-        }
+        next = n;
+        while (typeof next == "function") // boing boing boing
+            next = next();                // trampolining is fun!
         dispatcher.isDispatching = false;
     }
-};
+    function continueDispatching(getPriority) {
+        while (typeof next == "function" && next.priority < getPriority())
+            next = next();
+    }
+    return {
+        active: {}, // a token
+        isDispatching: false, /* get isDispatching() { return  typeof next == "function"; } */
+        evaluating: null,
+        evaluate: evaluate,
+        continueUntil: continueDispatching,
+        start: startDispatching
+    };
+}());
 Stream.dispatch = dispatcher.start;
 
 function map(fn, stream) {
@@ -373,6 +382,7 @@ function compose(streams) {
 }
 
 function sample(eventStream, fn) {
+    // builds a ValueStream for the result of execung `fn()`, updates (executes `fn`) every time `eventStream` fires 
     return new ValueStream(function(fire, setPriority) {
         function listener() {
             return fire(fn())
