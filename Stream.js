@@ -127,10 +127,128 @@ Stream.prototype.dispatchEvent = function() {
 };
 
 function EventStream(fn, context) {
-    Stream.apply(this, arguments);
+    var that = this,
+        listeners = [],
+        typedlisteners = {},
+        errorlisteners = [],
+        listenercount = 0,
+        priority = 0,
+        stop = null,
+        go = fn(fire, setPriority);
+    // @TODO: Code duplication in add/on/onError, remove/off/offError
+    function add(ls) {
+        if (listenercount == 0)
+            stop = go();
+            
+        listeners.push(ls);
+        listenercount++;
+        ls.priority = priority;
+        return this;
+    }
+    function remove(ls) {
+        var i = listeners.indexOf(ls);
+        if (i >= 0) {
+            listeners.splice(i, 1);
+            listenercount--;
+            if (listenercount == 0)
+                go = stop();
+        }
+        return this;
+    }
+    function on(t, ls) {
+        if (!(t in typedlisteners))
+            typedlisteners[t] = [];
+         if (listenercount == 0)
+            stop = go();
+            
+        typedlisteners[t].push(ls);
+        listenercount++;
+        ls.priority = priority;
+        return this;
+    }
+    function off(t, ls) {
+        if (!(t in typedlisteners))
+            return this;
+        var i = typedlisteners[t].indexOf(ls);
+        if (i >= 0) {
+            typedlisteners[t].splice(i, 1);
+            listenercount--;
+            if (listenercount == 0)
+                go = stop();
+        }
+        return this;
+    }
+    function onError(ls) {
+        if (listenercount == 0)
+            stop = go();
+            
+        errorlisteners.push(ls);
+        errorlistenercount++;
+        ls.priority = priority;
+        return this;
+    }
+    function offError(ls) {
+        var i = errorlisteners.indexOf(ls);
+        if (i >= 0) {
+            errorlisteners.splice(i, 1);
+            listenercount--;
+            if (listenercount == 0)
+                go = stop();
+        }
+        return this;
+    }
+    function fire(event) {
+        // invokes all given listeners with event and context
+        // returns: Continuation or undefined
+        function invoke(l) {
+            return l.call(that.context, event);
+        }
+        var cb = new ContinuationBuilder().each(listeners, invoke);
+        if (!("type" in event))
+            cb.each(errorlisteners, invoke)
+        else if (event.type in typedlisteners)
+            cb.each(typedlisteners[event.type], invoke);
+        return cb.getContinuation();
+    }
+    function setPriority(p) {
+        // updates the priority of the listeners
+        if (p < priority)
+            throw "Stream|setPriority: Reducing priority is not designed (yet)";
+        if (p == priority)
+            return;
+        priority = p;
+        return new ContinuationBuilder().each(listeners, function(l) {
+            if (l.priority < priority)
+                return l.setPriority(priority);
+        });
+    }
+
     this.context = context || this;
+
+    this.addListener = add;
+    this.removeListener = remove;
+    this.addEventListener = on;
+    this.removeEventListener = off;
+    this.addErrorListener = onError;
+    this.removeErrorListener = offError;
 }
 EventStream.prototype = Object.create(Stream.prototype, {constructor:{value:EventStream}});
+EventStream.prototype.on = function(t, ls) {
+    if (Array.isArray(t))
+        for (var i=0; i<t.length; i++)
+            this.addEventListener(t[i], ls);
+    else
+        this.addEventListener(t, ls);
+    return this;
+};
+EventStream.prototype.off = function(t, ls) {
+    if (Array.isArray(t))
+        for (var i=0; i<t.length; i++)
+            this.removeEventListener(t[i], ls);
+    else
+        this.removeEventListener(t, ls);
+    return this;    
+};
 
 function ValueStream(fn) {
     // @TODO: code duplication (remove, setPriority)
