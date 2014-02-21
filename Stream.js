@@ -84,21 +84,8 @@ function ContinuationBuilder() {
 	this.getContinuation = next;
 }
 
-function dispatch(fire, event) {
-	var next = fire(event);
-	while (typeof next == "function") // boing boing boing
-		next = next();                // trampolining is fun!
-};
-Stream.dispatch = dispatch;
-
 /* @implements EventTarget */
-function EventStream(fn, context) {
-    Stream.apply(this, arguments);
-    this.context = context || this;
-}
-EventStream.prototype = Object.create(Stream.prototype, {constructor:{value:EventStream}});
-
-EventStream.prototype.addEventListener = function addEventListener(type, handler) {
+Stream.prototype.addEventListener = function addEventListener(type, handler) {
     if (handler !== Object(handler))
         return;
     var that = this;
@@ -113,30 +100,37 @@ EventStream.prototype.addEventListener = function addEventListener(type, handler
     listener.setPriority = handler.setPriority.bind(handler);
     this.addListener(listener);
     handler.priority = listener.priority;
-    handler._removeFromEventTarget = (function(remove) {
-        return function self(ta, ty) {
-            // @FIXME: avoid memory leaks of references to Streams from which the listener has been removed already
-            //         or where _removeFromEventTarget could not be resetted  
-            if (ty == type && ta == that) {
+    handler._removeFromEventTarget = (function(prev) {
+        return function removeFrom(ta, ty) {  
+            if (that != null && ta == that && ty == type) {
                 that.removeListener(listener);
-                if (this._removeFromEventTarget == self)
-                    this._removeFromEventTarget = remove;
-            } else if (typeof remove == "function")
-                remove.call(this, ta, ty);
+                handler = listener = that = null;
+            } else if (typeof prev == "function")
+                prev.call(this, ta, ty);
+            if (that == null && this._removeFromEventTarget == removeFrom)
+                this._removeFromEventTarget = prev;
         }
     })(handler._removeFromEventTarget);
     return function remove() {
-        that.removeListener(listener);
+        // @TODO: "simply" call removeFrom(that, type)?
+        if (that != null)
+            that.removeListener(listener);
+        handler = listener = that = null;
     };
 };
-EventStream.prototype.removeEventListener = function removeEventListener(type, handler) {
-    if (typeof handler._removeFromEventTarget == "function")
+Stream.prototype.removeEventListener = function removeEventListener(type, handler) {
+    if (handler && typeof handler._removeFromEventTarget == "function")
         handler._removeFromEventTarget(this, type);
 };
-EventStream.prototype.dispatchEvent = function() {
-    throw new Error("InvalidStateError: EventStreams::dispatchEvent must not be invoked from outside");
+Stream.prototype.dispatchEvent = function() {
+    throw new Error("InvalidStateError: Stream::dispatchEvent must not be invoked from outside");
 };
 
+function EventStream(fn, context) {
+    Stream.apply(this, arguments);
+    this.context = context || this;
+}
+EventStream.prototype = Object.create(Stream.prototype, {constructor:{value:EventStream}});
 
 function ValueStream(fn) {
     // @TODO: code duplication (remove, setPriority)
@@ -192,6 +186,13 @@ function ValueStream(fn) {
     this.removeListener = remove;
 }
 ValueStream.prototype = Object.create(Stream.prototype, {constructor:{value:ValueStream}});
+
+function dispatch(fire, event) {
+    var next = fire(event);
+    while (typeof next == "function") // boing boing boing
+        next = next();                // trampolining is fun!
+};
+Stream.dispatch = dispatch;
 
 function map(fn, stream) {
     return new Stream(function(fire, propagatePriority) {
