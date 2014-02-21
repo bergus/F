@@ -13,6 +13,9 @@ The library:
 * It's complicated. complex?
 * Functional ... glitch free ... reactive ... fluid
 * Rhea, rhei?
+* F\rhei - functional reactive high efficiency implementation
+                               higher-order environment
+                               highly-
 
 
 Influences

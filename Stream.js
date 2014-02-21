@@ -67,10 +67,11 @@ function ContinuationBuilder() {
 	    // @FIXME: On re-entry via continueDispatch, this may be flawed if waiting is not shifted properly
 	    do {
     		var postponed = waiting[0].call();
-    		if (postponed != dispatcher.active) waiting.shift(); // @FIXME: possible non-terminating loop
+    		if (postponed != waiting[0]) waiting.shift(); // @FIXME: possible non-terminating loop
     		// else move to the back of continuations with this priority ???
     		// should "still" be in the first place (where expected) when call() returns
     		// Should no continuations on the path should be "emptied" during continueDispatch so that it can "return" normally? No, not necessary.
+    		// continueDispatch should only be called after execute.priority has been increased? Can this be expected?
     		if (typeof postponed == "function")
     			waiting.insertSorted(postponed, "priority");
     	} while (waiting[0].priority == suspended.priority)
@@ -199,8 +200,7 @@ function ValueStream(fn) {
             return this;
         }
         dispatcher.evaluating.add(this); // triggers computation by adding a listener
-        if (dispatcher.isDispatching)
-            dispatcher.continueUntil(function(){ return priority; }); // dispatch (fire, trigger the listener) and propagate priorities until own priority is matched  
+        dispatcher.continueUntil(function(){ return priority; }); // dispatch (fire, trigger the listener) and propagate priorities until own priority is matched  
         return value[0]; // @TODO: How to handle multiple values?
     }
 }
@@ -216,7 +216,7 @@ ValueStream.of = function(fn) {
         //        * re-evaluating after the last listeners' level may be unnecessary late when that is no more a dependency 
         function execute() {
             if (!watching)
-                return dispatcher.active; // second run during continueDispatch
+                return execute; // second run during continueDispatch
             var cont = fire(dispatcher.evaluate(fn, deps, listener)); 
             watching = false;
             return cont;
@@ -271,19 +271,18 @@ var dispatcher = (function() {
         return res;
     }
     function startDispatching(n) {
-        dispatcher.isDispatching = true;
+        if (typeof next == "function")
+            throw new Error("dispatcher.start: must not be invoked during dispatch phase");
         next = n;
         while (typeof next == "function") // boing boing boing
             next = next();                // trampolining is fun!
-        dispatcher.isDispatching = false;
     }
     function continueDispatching(getPriority) {
         while (typeof next == "function" && next.priority < getPriority())
             next = next();
     }
     return {
-        active: {}, // a token
-        isDispatching: false, /* get isDispatching() { return  typeof next == "function"; } */
+        isDispatching: function() { return  typeof next == "function"; },
         evaluating: null,
         evaluate: evaluate,
         continueUntil: continueDispatching,
