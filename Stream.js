@@ -35,10 +35,11 @@ function Stream(fn) {
 	}
 	function setPriority(p) {
 		// updates the priority of the listeners
+		// returns ContinuationBuilder
 		if (p < priority)
 			throw "Stream|setPriority: Reducing priority is not designed (yet)";
 		if (p == priority)
-			return;
+			return new ContinuationBuilder();
 		priority = p;
 		return new ContinuationBuilder().each(listeners, function(l) {
 			if (l.priority < priority)
@@ -57,6 +58,7 @@ function ContinuationBuilder() {
 	var waiting = [];
 	
 	function next() {
+		// invariant: waiting.length > 0
 		if (waiting.length <= 1)
 			return waiting.shift();
 		suspended.priority = waiting[0].priority;
@@ -65,17 +67,15 @@ function ContinuationBuilder() {
 	}
 	function suspended() {
 		// invariant: suspended.priority == waiting[0].priority
-		// On re-entry via continueDispatch, this may be flawed:
-		if (waiting[0].priority != suspended.priority)
-			waiting.shift();
-		// continueDispatch should only be called after execute.priority has been increased? Can this be expected? FIXME: Or is it totally wrong?
-		for (var active = waiting[0]; active.priority == suspended.priority; active = waiting[0]) {
-			var postponed = active.call();
+		// the priority value of a continuation in waiting never changes
+		var active = waiting[0];
+		do {
+			var postponed = active.call(); // might trigger continueDispatch()
 			if (active == waiting[0]) // "still" in the first place (where expected) after call() returned
 				waiting.shift();
 			if (typeof postponed == "function")
 				waiting.insertSorted(postponed, "priority");
-		}
+		} while (active = waiting[0] && active.priority == suspended.priority);
 		return next();
 	}
 	this.each = function(arr, cb) {
@@ -181,10 +181,11 @@ function ValueStream(fn) {
 	
 	function setPriority(p) {
 		// updates the priority of the listeners
+		// returns ContinuationBuilder
 		if (p < priority)
 			throw "Stream|setPriority: Reducing priority is not designed (yet)";
 		if (p == priority)
-			return;
+			return new ContinuationBuilder();
 		priority = p;
 		return new ContinuationBuilder().each(listeners, function(l) {
 			if (l.priority < priority)
@@ -220,25 +221,28 @@ ValueStream.of = function(fn) {
 		function execute() {
 			if (!watching)
 				return; // second run during continueDispatch
+			if (execute.priority <= prio) {
+				execute.priority = prio+1;
+				return execute;
+			}
 			var cont = fire(dispatcher.evaluate(fn, deps, listener));
 			watching = false;
 			return cont;
 		}
 		execute.priority = prio+1;
 		
-		function listener() { // does not take a value
+		function listener() { // does not take a value...
 			// fires when any of the dependencies does update or initialize
 			if (!watching) {
 				watching = true;
-				return execute;
-			} // but yields the update continuation
+				return execute; // ...but yields the update continuation
+			}
 		};
 		listener.setPriority = function(p) {
-			if (p < prio)
+			if (p <= prio)
 				return;
-			prio = this.priority = p; // @FIXME: increases the priority on all dependencies. Doesn't matter, does it?
-			execute.priority = prio+1; // @FIXME: do we need a new execute function? I guess so.
-			return propagatePriority(prio+1); // @FIXME: could this be unnecessary?
+			prio = this.priority = p; // increases the priority on all dependencies. Doesn't matter, does it?
+			return propagatePriority(prio+1).getContinuation(); // @FIXME: could this be unnecessary? Is not (yet) propagated either
 		};
 		
 		function go() {
@@ -246,6 +250,7 @@ ValueStream.of = function(fn) {
 			fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
 			watching = false;
 			prio = listener.priority;
+			execute.priority = prio+1;
 			propagatePriority(prio+1);
 			return stop;
 		}
@@ -335,7 +340,7 @@ function compose(streams) {
 			if (p <= prio || p <= this.priority)
 				return;
 			prio = this.priority = p;
-			propagatePriority(prio+1).each(steps, function(_, i) {
+			return propagatePriority(prio+1).each(steps, function(_, i) {
 				return steps[i] = makeStep();
 			}).getContinuation();
 		}
@@ -379,7 +384,7 @@ function compose(streams) {
 				if (listeners[i].priority > prio) {
 					prio = listeners[i].priority;
 					propagatePriority(prio+1);
-					// console.assert(typeof propagatePriority(prio+1) == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
+					// console.assert(typeof propagatePriority(prio+1).getContinuation() == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
 				}
 			}
 			return stop;
@@ -397,12 +402,12 @@ function compose(streams) {
 
 function sample(eventStream, fn) {
 	// builds a ValueStream for the result of execung `fn()`, updates (executes `fn`) every time `eventStream` fires 
-	return new ValueStream(function(fire, setPriority) {
+	return new ValueStream(function(fire, propagatePriority) {
 		function listener() {
 			return fire(fn())
 		}
 		listener.setPriority = function(p) {
-			setPriority(p+1); // @TODO: really needed?
+			return propagatePriority(p+1).getContinuation(); // @TODO: really needed?
 		};
 		
 		function go() {
