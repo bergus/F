@@ -11,6 +11,7 @@ function Stream(fn) {
 			stop = go();
 			
 		listeners.push(ls);
+		
 		if (!(ls.priority >= priority))
             ls.priority = priority;
 		return this;
@@ -60,21 +61,22 @@ function ContinuationBuilder() {
 		if (waiting.length <= 1)
 			return waiting.shift();
 		suspended.priority = waiting[0].priority;
+		
 		return suspended;
 	}
 	function suspended() {
 	    // invariant: suspended.priority == waiting[0].priority
-	    // @FIXME: On re-entry via continueDispatch, this may be flawed if waiting is not shifted properly
-	    do {
-    		var postponed = waiting[0].call();
-    		if (postponed != waiting[0]) waiting.shift(); // @FIXME: possible non-terminating loop
-    		// else move to the back of continuations with this priority ???
-    		// should "still" be in the first place (where expected) when call() returns
-    		// Should no continuations on the path should be "emptied" during continueDispatch so that it can "return" normally? No, not necessary.
-    		// continueDispatch should only be called after execute.priority has been increased? Can this be expected?
+	    // On re-entry via continueDispatch, this may be flawed:
+	    if (waiting[0].priority != suspended.priority)
+            waiting.shift();
+        // continueDispatch should only be called after execute.priority has been increased? Can this be expected? FIXME: Or is it totally wrong?
+	    for (var active=waiting[0]; active.priority == suspended.priority; active=waiting[0]) {
+    		var postponed = active.call();
+    		if (active == waiting[0]) // "still" in the first place (where expected) after call() returned
+                waiting.shift();
     		if (typeof postponed == "function")
     			waiting.insertSorted(postponed, "priority");
-    	} while (waiting[0].priority == suspended.priority)
+    	}
 		return next();
 	}
 	this.each = function (arr, cb) {
@@ -216,7 +218,7 @@ ValueStream.of = function(fn) {
         //        * re-evaluating after the last listeners' level may be unnecessary late when that is no more a dependency 
         function execute() {
             if (!watching)
-                return execute; // second run during continueDispatch
+                return; // second run during continueDispatch
             var cont = fire(dispatcher.evaluate(fn, deps, listener)); 
             watching = false;
             return cont;
