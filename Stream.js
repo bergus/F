@@ -75,7 +75,7 @@ function ContinuationBuilder() {
 				waiting.shift();
 			if (typeof postponed == "function")
 				waiting.insertSorted(postponed, "priority");
-		} while (active = waiting[0] && active.priority == suspended.priority);
+		} while ((active = waiting[0]) && active.priority == suspended.priority);
 		return next();
 	}
 	this.each = function(arr, cb) {
@@ -268,18 +268,29 @@ var dispatcher = (function() {
 	var next;
 	
 	function evaluate(fn, deps, listener) {
-		var old = this.evaluating; // stacking :-)
-		// @TODO: more intelligent handling of re-used dependencies
-		while (deps.length)
-			deps.pop().removeListener(listener);
+		var old = this.evaluating, // stacking :-)
+		    i = 0,
+		    rem = [];
 		this.evaluating = deps;
 		deps.add = function(d) {
-			// @FIXME: handling of multiple-used dependencies
-			this.push(d);
-			d.addListener(listener);
+			var j = this.indexOf(d);
+			if (j > i)
+				rem.push.apply(rem, this.splice(i, j));
+			else if (j < 0) {
+				// d might be in rem, but that doesn't matter
+				this.splice(i, 0, d);
+				d.addListener(listener);
+			}
+			i++;
 			return listener.setPriority(listener.priority);
 		}
 		var res = fn();
+		
+		while (deps.length > i)
+			deps.pop().removeListener(listener);
+		for (var l=rem.length; l--; )
+			rem[l].removeListener(listener);
+		
 		this.evaluating = old; // restore
 		return res;
 	}

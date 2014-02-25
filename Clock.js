@@ -24,9 +24,10 @@ var Clock = (function() {
 				c.add(timer.fire.bind(null, t));
 				timers.insertSorted(timer.next(), "time");
 			} while (timers[0].time == nexttime);
-			Stream.dispatch(c.getContinuation(), t);
+			Stream.dispatch(c.getContinuation()); // but this might remove some
 		}
-		timeout = setTimeout(check, timers[0].time-t);
+		if (timers.length)
+			timeout = setTimeout(check, timers[0].time-t);
 	}
 	function Clock(from, interval) {
 		if (arguments.length == 1) {
