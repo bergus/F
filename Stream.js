@@ -87,7 +87,8 @@ function ContinuationBuilder() {
 		return this;
 	};
 	this.add = function(cont) {
-		waiting.insertSorted(cont, "priority");
+		if (typeof cont == "function")
+			waiting.insertSorted(cont, "priority");
 		return this;
 	};
 	this.getContinuation = next;
@@ -201,8 +202,8 @@ function ValueStream(fn) {
 			console.warn("ValueStream.valueOf can only be invoked during an evaluation phase");
 			return this;
 		}
-		dispatcher.evaluating.add(this); // triggers computation by adding a listener
-		dispatcher.continueUntil(function() {
+		var cont = dispatcher.evaluating.add(this); // triggers computation by adding a listener
+		dispatcher.continueUntil(cont, function() {
 			return priority;
 		}); // dispatch (fire, trigger the listener) and propagate priorities until own priority is matched  
 		return value[0]; // @TODO: How to handle multiple values?
@@ -242,7 +243,7 @@ ValueStream.of = function(fn) {
 			if (p <= prio)
 				return;
 			prio = this.priority = p; // increases the priority on all dependencies. Doesn't matter, does it?
-			return propagatePriority(prio+1).getContinuation(); // @FIXME: could this be unnecessary? Is not (yet) propagated either
+			return propagatePriority(prio+1).getContinuation();
 		};
 		
 		function go() {
@@ -276,7 +277,7 @@ var dispatcher = (function() {
 			// @FIXME: handling of multiple-used dependencies
 			this.push(d);
 			d.addListener(listener);
-			listener.setPriority(listener.priority); // @FIXME: How to propagate this?
+			return listener.setPriority(listener.priority);
 		}
 		var res = fn();
 		this.evaluating = old; // restore
@@ -289,7 +290,8 @@ var dispatcher = (function() {
 		while (typeof next == "function") // boing boing boing
 			next = next();                // trampolining is fun!
 	}
-	function continueDispatching(getPriority) {
+	function continueDispatching(n, getPriority) {
+		next = new ContinuationBuilder().add(next).add(n).getContinuation();
 		while (typeof next == "function" && next.priority < getPriority())
 			next = next();
 	}
