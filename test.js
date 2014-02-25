@@ -1,13 +1,17 @@
 /* Code examples of how to use Streams */
 
+var a = new Clock(2000),
+    b = sample(a, Math.random),
+    c = ValueStream.of(function(){ return b+1; }); // yes, b instanceof ValueStream!
+
 var mouse = getEventStream(document, "mousemove")
-	position = mouse.get("clientX"),
-	barleft = position.map(add(-50)),
-	barright = position.map(add(50)),
-	clipleft = barleft.map(Math.max.bind(null, -100)),
-	clipright = barright.map(Math.min.bind(null, 100)),
-	actuallength = compose(clipleft, clipright, function(l, r){ return r-l;});
-	// expect actuallength to be updated only once per mouse event
+    position = mouse.get("clientX"),
+    barleft = position.map(add(-50)),
+    barright = position.map(add(50)),
+    clipleft = barleft.map(Math.max.bind(null, -100)),
+    clipright = barright.map(Math.min.bind(null, 100)),
+    actuallength = compose(clipleft, clipright, function(l, r){ return r-l;});
+    // expect actuallength to be updated only once per mouse event
 
 var rStr = getRandomEventStream(),
     doubled = merge(rStr, rStr),

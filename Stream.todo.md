@@ -13,6 +13,9 @@ The library:
 * It's complicated. complex?
 * Functional ... glitch free ... reactive ... fluid
 * Rhea, rhei?
+* F\rhei - functional reactive high efficiency implementation
+                               higher-order environment
+                               highly-
 
 
 Influences
@@ -29,10 +32,12 @@ Influences
 Thoughts
 --------
 
-Collections provide interesting temporal manipulations like filtering by "add" time window, or N most recent values
-
-TimeBehaviour: A ValueStream of TimeEquations that can be composed lazily and executed/evaluated for a given time to produce a value
-  they might allow Integration / Derivation over time 
+Ideas:
+* Collections provide interesting temporal manipulations like filtering by "add" time window, or N most recent values
+* TimeBehaviour: A ValueStream of TimeEquations that can be composed lazily and executed/evaluated for a given time to produce a value
+  they might allow Integration / Derivation over time
+* Replay Streams: Store start values, record input events - and have a time machine for every output state in the event sequence
+  only well-suited for referential transparent functions - the streams should have no internal state and should not be time-dependent 
 
 How to do describe collections and (application of) actions on them in terms of event streams?
 Possible syntax for an ajax request queue

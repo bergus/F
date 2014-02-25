@@ -27,7 +27,7 @@ Collections: streams with add/remove(/update) events in context of a set or list
  a collection can have an ordering, like fifo, lifo (stack), sortedBy, or custom.
 
 Continuation [extends Function]? {
-	call(null): do what is to be done. Return a Continuation or undefined
+	call(null): do what is to be done. Return a Continuation or undefined. If it returns itself, it wants to be deferred.
 	priority: lower is more urgent. MUST NOT change (from return until call).
 }
 EventListener extends Continuation {
