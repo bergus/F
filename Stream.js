@@ -284,7 +284,7 @@ function ValueStream(fn) {
 		// fire SHOULD be invoked at any time to notify the stream of a new current value
 		// it is EXPECTED that this happens during go() to initialise the value, and CAN even happen during fn()
 		// it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one
-		// don't forget to `return` the continuation which `fire()` yields
+		// don't forget to propagate the continuation which `fire()` yields
 	function add(ls) {
 		if (listeners.length == 0)
 			stop = go();
@@ -339,7 +339,7 @@ function ValueStream(fn) {
 		dispatcher.continueUntil(cont, function() {
 			return priority;
 		}); // dispatch (fire, trigger the listener) and propagate priorities until own priority is matched  
-		return value[0]; // @TODO: How to handle multiple values?
+		return value[0]; // @TODO: How to handle multiple values? @FIXME: How to handler errors?
 	}
 }
 ValueStream.prototype = Object.create(Stream.prototype, {constructor: {value: ValueStream}});
@@ -553,12 +553,14 @@ function sample(eventStream, fn) {
 			return fire(fn())
 		}
 		listener.setPriority = function(p) {
-			return propagatePriority(p+1).getContinuation(); // @TODO: really needed?
+			this.priority = p;
+			return propagatePriority(p).getContinuation();
 		};
 		
 		function go() {
 			eventStream.addListener(listener);
 			listener();
+			propagatePriority(listener.priority);
 			return stop;
 		}
 		

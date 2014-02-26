@@ -1,12 +1,21 @@
-Invarianten auf dem Graphen
+Invariants and Contracts
 ---------------------------
 
-* Kreisfreiheit. Kreise können mit einem Prioritätssprung verwirklicht werden, derjenige Knoten hat die Verantwortung für die Semantik
+* The priority graph is acyclic.
 * priority/subordinacy are used to describe a partial ordering, so that the nodes can be topologically sorted
-* A listener MUST NOT be executed when there is a waiting listener with smaller priority value
-* The priority of a (yielded) continuation MUST not be changed
+* dispatcher.start SHOULD only be invoked asynchronically, i.e. in a dedicated event loop cycle
+* dispatcher.start MUST NOT be invoked during a dispatch phase
+* A listener MUST NOT be executed when there is a waiting continuation with smaller priority value
+* The priority of a (yielded, therefore waiting) continuation MUST not be changed
 * A continuation MUST NOT yield a continuation with lower priority than itself
-
+* `addListener(l)` does increase or create the `l.priority` property
+* `addListener(l)` does not invoke l.setPriority()
+* `l.setPriority(p)` MUST set the `l.priority` property to `p`
+* a Stream function fn(fire, priority) SHOULD return a handler function that can receive "go" and "stop" messages
+* when such a handler receives a "go" message, it MUST call the priority() setter but does not need to propagate the returned continuation
+* when such a handler receives a "go" message in a ValueStream, it MUST call fire() with the current value but does not need to propagate the returned continuation
+* fire() MUST return `undefined` when invoked before or during "go" message or after a "stop" message
+* priority() MUST return `undefined` when invoked before or during "go" message or after a "stop" message
 
 Interfaces and Constructors
 ---------------------------
@@ -44,4 +53,3 @@ Examples
 
 Drag'n'Drop: ValueStream of Promises (for drop actions) that fire Progress-EventStreams for the drag-animation
 Resettable Timer: ValueStream of Clock-Behaviors or Interval-EventStreams -> flatten to Stream of "reset" and "tick" events
-CircularEvaluation: Fix-point behaviours! Where does the circle start when two of its inputs are changed at the same time? 

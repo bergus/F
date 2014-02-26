@@ -37,7 +37,9 @@ Ideas:
 * TimeBehaviour: A ValueStream of TimeEquations that can be composed lazily and executed/evaluated for a given time to produce a value
   they might allow Integration / Derivation over time
 * Replay Streams: Store start values, record input events - and have a time machine for every output state in the event sequence
-  only well-suited for referential transparent functions - the streams should have no internal state and should not be time-dependent 
+  only well-suited for referential transparent functions - the streams should have no internal state and should not be time-dependent
+* CircularEvaluation: Fix-point behaviours! Where does the circle start when two of its inputs are changed at the same time?
+  Kreise können nur mit einem Prioritätssprung verwirklicht werden, derjenige Knoten hat die Verantwortung für die Semantik
 
 How to do describe collections and (application of) actions on them in terms of event streams?
 Possible syntax for an ajax request queue
@@ -100,7 +102,7 @@ Problems (and suggested solutions)
 			see proposal under #thoughts.
 			A behaviour listener could happen to be called multiple times for initialisation, but should only use the last of these values
 			Identity is expected: `anyStream.flatMap(_ -> someStream) = someStream`
-* 
+* How can an EventStream.getLastEvent() ValueStream be garbage-collected? Does it need to be explicitly stopped?
  
 * How is the outside world representated? Isn't there a circular event stream?
 			`run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b`
