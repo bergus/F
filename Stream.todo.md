@@ -86,8 +86,11 @@ Problems (and suggested solutions)
 * How does lazy listening work with asynchronous combinators?
 			It does not, async is a kind of output and requires a strict listener
 			The computations may be deferred though, using lazyness
-* Should ValueStreams have Promise-like error handling?
+* Should streams have Promise-like error handling?
 			Propagating Error objects instead of arguments objects could work fine.
+			Yes, ValueStreams should be able to represent an error state, and respect this in their monadic properties
+				How? Node-style callbacks? Separate error listeners? What about `fire()`
+			No, EventStreams have no notion of state and treat every passed item (event or error) equally
 
 * Adding the first listener starts event propagation - `go()`. How is its priority computed and assigned?
 			Recursively. After the call to `go()`, the priority is expected to be known; and can be assigned as usual
@@ -107,7 +110,7 @@ Problems (and suggested solutions)
 * How is the outside world representated? Isn't there a circular event stream?
 			`run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b`
 			@TODO check FRP paper on exact type signature
-* 
+* Can `fire` and `propagatePriority` be used as a listener and it's setPriority method, for most easy (performant?) chaining?
 
 Methods and Functions proposals
 -------------------------------

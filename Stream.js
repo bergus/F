@@ -304,10 +304,10 @@ function ValueStream(fn) {
 		}
 		return this;
 	}
-	function fire() {
+	function fire(data) {
 		// invokes all given listeners with arguments and context
 		// returns: Continuation or undefined
-		value = arguments; // @TODO: Should fire() take arguments or a single args array?
+		value = data; // @TODO: Should fire() take arguments or a single args array?
 		return new ContinuationBuilder().each(listeners, function(l) {
 			return l.apply(that.context, value); // @TODO: handle errors
 		}).getContinuation();
@@ -449,8 +449,15 @@ var dispatcher = (function() {
 }());
 Stream.dispatch = dispatcher.start;
 
+function PrimitiveError(p) {
+	var e = new Error(p);
+	e.name = "";
+	e.valueOf = function() { return p; }
+	return e;
+}
+
 function map(fn, stream) {
-	return new Stream(function(fire, propagatePriority) {
+	return new stream.constructor(function(fire, propagatePriority) {
 		function listener(v) {
 			return fire(fn(v));
 		}
@@ -458,7 +465,7 @@ function map(fn, stream) {
 		listener.setPriority = function(p) {
 			this.priority = p;
 			return propagatePriority(p).getContinuation();
-		}
+		};
 		
 		function go() {
 			stream.addListener(listener);
@@ -547,7 +554,7 @@ function compose(streams) {
 }
 
 function sample(eventStream, fn) {
-	// builds a ValueStream for the result of execung `fn()`, updates (executes `fn`) every time `eventStream` fires 
+	// builds a ValueStream for the result of executing `fn()`, updates (executes `fn`) every time `eventStream` fires 
 	return new ValueStream(function(fire, propagatePriority) {
 		function listener() {
 			return fire(fn())
