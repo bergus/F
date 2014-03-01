@@ -120,6 +120,11 @@ return: the functions result converted to boolean, optionally inverted */
 Function.ident = Function.identity = Function.I = function identity(x) {
 	return x;
 };
+Function.const = function(x) {
+	return function() {
+		return x;
+	};
+};
 
 Function.chain = Function.compose = function compose(fn) {
 	var fns = Array.prototype.slice.call(arguments, 0);
@@ -153,7 +158,7 @@ Function.prototype.nest = function nest(n) {
 		};
 	else
 		// TODO: warning
-		return Function.idendity;
+		return Function.identity;
 }
 
 Function.Named = function NamedFunction(name, args, body, scope, values) {
@@ -177,4 +182,33 @@ Function.invoke = function(fn) {
 		return function(obj) {
 			return obj[fn].apply(obj, args);
 		};
+};
+
+/* https://github.com/fantasyland/fantasy-land */
+// Functor
+Function.prototype.map = function map(g) {
+	// Function.compose(g, this)
+	var f = this;
+	return function() {
+		return g(f.apply(this, arguments));
+	};
+};
+
+// Applicative
+Function.prototype.ap = function ap(g) {
+	var f = this;
+	return function() {
+		return f.apply(this, arguments)(g.apply(this, arguments));
+	};
+};
+// Applicative, Monad
+Function.prototype.of = Function.of = Function.const;
+
+// Chain, Monad
+// f.chain(g).chain(h) == ()=>h(g(f.apply()).apply()).apply() == ()=>g(f.apply()).chain(h).apply() == f.chain((x)=>g(x).chain(h))
+Function.prototype.chain = function chain(g) {
+	var f = this;
+	return function() {
+		return g(f.apply(this, arguments)).apply(this, arguments);
+	};
 };

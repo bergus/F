@@ -1,8 +1,3 @@
-Function.const = function(x) {
-	return function() {
-		return x;
-	};
-};
 function Lazy(fn, args, context) {
 	if (args)
 		this.execute = function() {
