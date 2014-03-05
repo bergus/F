@@ -4,11 +4,10 @@ function Stream(fn) {
 	var that = this,
 	    listeners = [],
 	    priority = 0,
-	    stop = null,
-	    go = fn(fire, setPriority);
+	    send = fn(fire, setPriority);
 	function add(ls) {
 		if (listeners.length == 0)
-			stop = go();
+			send("go");
 		
 		listeners.push(ls);
 		
@@ -21,7 +20,7 @@ function Stream(fn) {
 		if (i >= 0) {
 			listeners.splice(i, 1);
 			if (listeners.length == 0)
-				go = stop();
+				send("stop");
 		}
 		return this;
 	}
@@ -144,12 +143,11 @@ function EventStream(fn, context) {
 	    errorlisteners = [],
 	    listenercount = 0,
 	    priority = 0,
-	    stop = null,
-	    go = fn(fire, setPriority);
+	    send = fn(fire, setPriority);
 	// @TODO: Code duplication in add/on/onError, remove/off/offError
 	function add(ls) {
 		if (listenercount == 0)
-			stop = go();
+			send("go");
 		
 		listeners.push(ls); // @FIXME: During dispatch, defer after firing
 		listenercount++;
@@ -163,7 +161,7 @@ function EventStream(fn, context) {
 			listeners.splice(i, 1);
 			listenercount--;
 			if (listenercount == 0)
-				go = stop();
+				send("stop");
 		}
 		return this;
 	}
@@ -172,7 +170,7 @@ function EventStream(fn, context) {
 		if (!(t in typedlisteners))
 			typedlisteners[t] = [];
 		if (listenercount == 0)
-			stop = go();
+			send("go");
 		
 		typedlisteners[t].push(ls);
 		listenercount++;
@@ -188,14 +186,14 @@ function EventStream(fn, context) {
 			typedlisteners[t].splice(i, 1);
 			listenercount--;
 			if (listenercount == 0)
-				go = stop();
+				send("stop");
 		}
 		return this;
 	}
 	
 	function onError(ls) {
 		if (listenercount == 0)
-			stop = go();
+			send("go");
 		
 		errorlisteners.push(ls);
 		errorlistenercount++;
@@ -209,7 +207,7 @@ function EventStream(fn, context) {
 			errorlisteners.splice(i, 1);
 			listenercount--;
 			if (listenercount == 0)
-				go = stop();
+				send("stop");
 		}
 		return this;
 	}
@@ -279,15 +277,14 @@ function ValueStream(fn) {
 	    value = [],
 	    listeners = [],
 	    priority = 0,
-	    stop = null,
-	    go = fn(fire, setPriority);
+	    send = fn(fire, setPriority);
 		// fire SHOULD be invoked at any time to notify the stream of a new current value
 		// it is EXPECTED that this happens during go() to initialise the value, and CAN even happen during fn()
 		// it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one
 		// don't forget to propagate the continuation which `fire()` yields
 	function add(ls) {
 		if (listeners.length == 0)
-			stop = go();
+			send("go");
 		
 		ls.apply(that.context, value);
 		listeners.push(ls);
@@ -300,7 +297,7 @@ function ValueStream(fn) {
 		if (i >= 0) {
 			listeners.splice(i, 1);
 			if (listeners.length == 0)
-				go = stop();
+				send("stop");
 		}
 		return this;
 	}
@@ -348,8 +345,7 @@ ValueStream.of = function() {
 	var args = arguments;
 	return new ValueStream(function(fire) {
 		fire(args);
-		function noop(){ return noop; };
-		return noop;
+		return Function.noop;
 	});
 };
 
@@ -388,22 +384,20 @@ ValueStream["for"] = function(fn) {
 			return propagatePriority(prio+1).getContinuation();
 		};
 		
-		function go() {
-			watching = true; // no need to yield `execute` from the listeners
-			fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
-			watching = false;
-			prio = listener.priority;
-			execute.priority = prio+1;
-			propagatePriority(prio+1);
-			return stop;
-		}
-		
-		function stop() {
-			while (deps.length)
-				deps.pop().removeListener(listener);
-			return go;
-		}
-		return go;
+		return Function.delegateName({
+			go: function go() {
+				watching = true; // no need to yield `execute` from the listeners
+				fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
+				watching = false;
+				prio = listener.priority;
+				execute.priority = prio+1;
+				propagatePriority(prio+1);
+			},
+			stop: function stop() {
+				while (deps.length)
+					deps.pop().removeListener(listener);
+			}
+		});
 	})
 }
 var dispatcher = (function() {
@@ -476,17 +470,15 @@ function map(fn, stream) {
 			return propagatePriority(p).getContinuation();
 		};
 		
-		function go() {
-			stream.addListener(listener);
-			propagatePriority(listener.priority);
-			return stop;
-		}
-		
-		function stop() {
-			stream.removeListener(listener);
-			return go;
-		}
-		return go;
+		return Function.delegateName({
+			go: function go() {
+				stream.addListener(listener);
+				propagatePriority(listener.priority);
+			},
+			stop: function stop() {
+				stream.removeListener(listener);
+			}
+		});
 	});
 }
 
@@ -540,25 +532,22 @@ function compose(streams) {
 		for (var i=0; i<l; i++)
 			listeners[i] = makeListener(i);
 		
-		function go() {
-			for (var i=0; i<l; i++) {
-				streams[i].addListener(listeners[i]);
-				if (listeners[i].priority > prio) {
-					prio = listeners[i].priority;
-					propagatePriority(prio+1);
-					// console.assert(typeof propagatePriority(prio+1).getContinuation() == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
+		return Function.delegateName({
+			go: function go() {
+				for (var i=0; i<l; i++) {
+					streams[i].addListener(listeners[i]);
+					if (listeners[i].priority > prio) {
+						prio = listeners[i].priority;
+						propagatePriority(prio+1);
+						// console.assert(typeof propagatePriority(prio+1).getContinuation() == "function", "Stream|compose: propagating priority during go() requires continuation dispatch");
+					}
 				}
+			},
+			stop: function stop() {
+				for (var i=0; i<l; i++)
+					streams[i].removeListener(listeners[i]);
 			}
-			return stop;
-		}
-		
-		function stop() {
-			for (var i=0; i<l; i++) {
-				streams[i].removeListener(listeners[i]);
-			}
-			return go;
-		}
-		return go;
+		});
 	});
 }
 
@@ -573,18 +562,16 @@ function sample(eventStream, fn) {
 			return propagatePriority(p).getContinuation();
 		};
 		
-		function go() {
-			eventStream.addListener(listener);
-			listener();
-			propagatePriority(listener.priority);
-			return stop;
-		}
-		
-		function stop() {
-			eventStream.removeListener(listener);
-			return go;
-		}
-		return go;
+		return Function.delegateName({
+			go: function go() {
+				eventStream.addListener(listener);
+				listener();
+				propagatePriority(listener.priority);
+			},
+			stop: function stop() {
+				eventStream.removeListener(listener);
+			}
+		})
 	});
 }
 
@@ -605,4 +592,12 @@ Array.prototype.insertSorted = function(el, by) {
 			var ca = by(a);
 			return +(ca>cel) || -(ca<cel);
 		}), 0, el);
+};
+Function.delegateName = function (methods) {
+	return function(name) {
+		if (methods.hasOwnProperty(name))
+			return methods[name].apply(this, Array.prototype.slice.call(arguments, 1));
+		else
+			return methods._forward.apply(this, arguments);
+	};
 };

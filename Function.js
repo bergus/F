@@ -120,6 +120,7 @@ return: the functions result converted to boolean, optionally inverted */
 Function.ident = Function.identity = Function.I = function identity(x) {
 	return x;
 };
+Function.noop = function noop() {};
 
 Function.chain = Function.compose = function compose(fn) {
 	var fns = Array.prototype.slice.call(arguments, 0);
