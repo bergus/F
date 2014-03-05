@@ -151,7 +151,7 @@ function EventStream(fn, context) {
 		if (listenercount == 0)
 			stop = go();
 		
-		listeners.push(ls);
+		listeners.push(ls); // @FIXME: During dispatch, defer after firing
 		listenercount++;
 		ls.priority = priority;
 		return this;
@@ -344,7 +344,16 @@ function ValueStream(fn) {
 }
 ValueStream.prototype = Object.create(Stream.prototype, {constructor: {value: ValueStream}});
 
-ValueStream.of = function(fn) {
+ValueStream.of = function() {
+	var args = arguments;
+	return new ValueStream(function(fire) {
+		fire(args);
+		function noop(){ return noop; };
+		return noop;
+	});
+};
+
+ValueStream["for"] = function(fn) {
 	return new ValueStream(function(fire, propagatePriority) {
 		var watching = false,
 		    deps = [],
@@ -360,7 +369,7 @@ ValueStream.of = function(fn) {
 				return execute;
 			}
 			var cont = fire(dispatcher.evaluate(fn, deps, listener));
-			watching = false;
+			watching = false; // @FIXME: Put before fire()?
 			return cont;
 		}
 		execute.priority = prio+1;
@@ -417,7 +426,7 @@ var dispatcher = (function() {
 			i++;
 			return listener.setPriority(listener.priority);
 		}
-		var res = fn();
+		var res = [fn()];
 		
 		while (deps.length > i)
 			deps.pop().removeListener(listener);
@@ -557,7 +566,7 @@ function sample(eventStream, fn) {
 	// builds a ValueStream for the result of executing `fn()`, updates (executes `fn`) every time `eventStream` fires 
 	return new ValueStream(function(fire, propagatePriority) {
 		function listener() {
-			return fire(fn())
+			return fire([fn()]);
 		}
 		listener.setPriority = function(p) {
 			this.priority = p;

@@ -2,7 +2,7 @@
 
 var a = new Clock(2000),
     b = sample(a, Math.random),
-    c = ValueStream.of(function(){ return b+1; }); // yes, b instanceof ValueStream!
+    c = ValueStream.for(function(){ return b+1; }); // yes, b instanceof ValueStream!
 
 var mouse = getEventStream(document, "mousemove")
     position = mouse.get("clientX"),

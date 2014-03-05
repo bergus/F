@@ -3,7 +3,7 @@ Naming
 
 Data structures:
 
-> Stream Flow Behaviour List Sequence Node Bus Property Eventstream Signal Series Pipe Channel EventEmitter
+> Stream Flow Behaviour List Sequence Node Bus Property Eventstream Signal Series Pipe Channel EventEmitter Variable
 >
 > data item event element value packet error
 
@@ -96,7 +96,7 @@ Problems (and suggested solutions)
 			Recursively. After the call to `go()`, the priority is expected to be known; and can be assigned as usual
 * How to detect circles in the priority DAG
   How to detect circles in `valueOf()` calls
-			Putting a lock on `setPriority()`?
+			Putting a lock on `setPriority()`? Notice that it's not recursive
 * Should a listener receive the current event (if any?) when being installed?
   What about a listener that is removed?
 			A Behaviour listener should definitely.
