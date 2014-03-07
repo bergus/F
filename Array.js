@@ -199,6 +199,23 @@ return: this */
 	return this;
 };
 
+Array.prototype.equals = function(b) {
+	return this.length >= b.length && this.every(function(v, i) {
+		return v == b[i];
+	})
+};
+Array.prototype.equalsBy = function(b, fn) {
+	if (typeof this == "function") { // Partial application for Array.equalsBy()
+		fn = this;
+		return function(a, b) {
+			return a.equalsBy(b, fn);
+		}
+	}
+	return this.length >= b.length && this.every(function(v, i) {
+		return fn(v, b[i]);
+	});
+}
+
 Array.prototype.invoke = function(methodName/*, arguments*/) {
 /* get: property name[, any, ...]
 		if an item is an Object and has such a method, the function is invoked (in context of the item and optionally with given arguments)
@@ -285,20 +302,6 @@ return: this */
 		this.unshift(this.pop());
 	return this;
 };
-/* http://stackoverflow.com/a/14789288/1048572 by rampion:
-// move i elements from the start of the array to the end of the array
-Array.prototype.lcycle = function(i) {
-  xs = this.slice(0,i);
-  ys = this.slice(i);
-  return ys.concat(xs)
-};
-// move i elements from the end of the array to the start of the array
-Array.prototype.rcycle = function(i) {
-  xs = this.slice(0,-i);
-  ys = this.slice(-i);
-  return ys.concat(xs);
-};
-*/
 
 Array.prototype.by = function(key, mult) {
 /* get: property name[, boolean]
@@ -430,46 +433,13 @@ Array.prototype.sortBy = function sortBy(get, ascending) {
 /* get: ( function(item) to return the value to be compared[, false to sort descending] | property-name-"path" for Object.get )
 		sorts the array by a value, determined from an item by the get function.
 		If the first of these values is a number (or can be converted to one), the sort will be numerical. Otherwise the sort is alphabetical, ignoring Uppercase.
-		@TODO: Use toLocaleLowerCase(), Function.prototype.call.bind(String.prototype.localeCompare)
+		@TODO: Use toLocaleLowerCase(), localeCompare()
 		@TODO: get returning undefined
 return: this */
 	if (typeof get != "function") {
 		get = Object.get.apply(null, arguments);
 		ascending = true;
 	}
-/* options:
-asce[ndi]ng - a
-desce[ndi]ng - d
-numer[i]c[all]y - n
-loc[a]le - l
-ig[n]oreUpperc[a]se - i
-
-	if (/i/.test(options))
-		get = (function(get, tlc){
-			return function(a) {
-				return String.prototype[tlc].call(get(a));
-			};
-		})(get, /l/.test(options) ? "toLocaleLowerCase" : "toLowerCase");
-	if (/n/.test(options))
-		var compare = function(a, b) {
-			return get(a) - get(b);
-		};
-	else if (/l/.test(options))
-		compare = function(a, b) {
-			return String.prototype.localeCompare.call(get(a), get(b));
-		}
-	else
-		compare = function(a, b) {
-			return get(a)<get(b) - get(a)>get(b); 
-		}
-	if (/d/.test(options))
-		compare = (function(comp) {
-			return function(a, b) {
-				return - comp(a, b); // or comp(b, a)
-			};
-		})(compare);
-	return this.sort(compare);
-*/
 	if (this[0] && typeof get(this[0]).valueOf() == "number")
 		return this.sort( ascending===false // assume ascending if not disabled (descending)
 			? function(a,b) {return get(b) - get(a);}
@@ -492,7 +462,7 @@ Array.prototype.sortedBy = function sortedBy(get, ascending) {
 		sorts the array by a value, determined from an item by the get function.
 		If the first of these values is a number (or can be converted to one), the sort will be numerical. Otherwise the sort is alphabetical, ignoring Uppercase.
 		does execute get() only once per array item, and is therefore faster than .sortBy()
-		@TODO: Use toLocaleLowerCase(), Function.prototype.call.bind(String.prototype.localeCompare)
+		@TODO: Use toLocaleLowerCase(), localeCompare()
 		@TODO: get returning undefined
 return: a new, sorted Array */
 	if (typeof get != "function")
@@ -676,7 +646,35 @@ return: array of n-sized arrays with the items (last array may contain less then
 	for (var i=0; i<this.length; i+=n)
 		r.push(this.slice(i, i+n));
 	return r;
-} 
+};
+
+
+/* https://github.com/fantasyland/fantasy-land */
+// Semigroup - concat is in ES5
+// Functor - map is in ES5
+
+// Applicative
+Array.prototype.ap = function ap(g) {
+	var res = [];
+	for (var i=0; i<this.length; i++)
+		for (var j=0; j<g.length; j++)
+			res.push(this[i](g[j]));
+	return res;
+};
+Array.prototype.zipAp = function zipAp(g) {
+	var res = [];
+	for (var i=0; i<this.length && i<g.length)
+		res.push(this[i](g[i]));
+	return res;
+};
+
+// Applicative, Monad
+Array.prototype.of = Array.of; // @FIXME as defined in ES6
+
+// Chain, Monad
+Array.prototype.chain = Array.prototype.concatMap = function chain(g) {
+	return Array.prototype.concat.apply([], this.map(g));
+};
 
 Object.keys(Array.prototype).concat(
 	["sort", "reverse"],
