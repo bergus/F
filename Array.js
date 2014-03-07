@@ -199,6 +199,23 @@ return: this */
 	return this;
 };
 
+Array.prototype.equals = function(b) {
+	return this.length >= b.length && this.every(function(v, i) {
+		return v == b[i];
+	})
+};
+Array.prototype.equalsBy = function(b, fn) {
+	if (typeof this == "function") { // Partial application for Array.equalsBy()
+		fn = this;
+		return function(a, b) {
+			return a.equalsBy(b, fn);
+		}
+	}
+	return this.length >= b.length && this.every(function(v, i) {
+		return fn(v, b[i]);
+	});
+}
+
 Array.prototype.invoke = function(methodName/*, arguments*/) {
 /* get: property name[, any, ...]
 		if an item is an Object and has such a method, the function is invoked (in context of the item and optionally with given arguments)

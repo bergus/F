@@ -271,7 +271,7 @@ EventStream.prototype.off = function(t, ls) {
 };
 
 
-function ValueStream(fn) {
+function ValueStream(fn, equal) {
 	// @TODO: code duplication (remove, setPriority)
 	var that = this,
 	    value = [],
@@ -282,6 +282,11 @@ function ValueStream(fn) {
 		// it is EXPECTED that this happens during go() to initialise the value, and CAN even happen during fn()
 		// it MUST NOT happen during a dispatch phase after the dispatch priority value is higher than the propagated one
 		// don't forget to propagate the continuation which `fire()` yields
+	if (typeof equal == "function" && (equal = [equal]) || Array.isArray(equal))
+		equal = Array.zipAp(equal); // @TODO: Should it be Array.prototype.zipAp.bind(eqaul)?
+	else if (typeof equal != "function")
+		equal = Array.equals;
+	
 	function add(ls) {
 		if (listeners.length == 0)
 			send("go");
@@ -304,6 +309,8 @@ function ValueStream(fn) {
 	function fire(data) {
 		// invokes all given listeners with arguments and context
 		// returns: Continuation or undefined
+		if (equal(value, data)) // no need to propagate unchanged values
+			return; // @TODO: Should the new values be stored nonetheless to garbage the old ones? What if equal is non-transitive?
 		value = data; // @TODO: Should fire() take arguments or a single args array?
 		return new ContinuationBuilder().each(listeners, function(l) {
 			return l.apply(that.context, value); // @TODO: handle errors
