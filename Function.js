@@ -112,8 +112,10 @@ Function.prototype.bool = function(real) {
 /* get: boolean real: whether the result should be returned as it is or get inverted
 return: the functions result converted to boolean, optionally inverted */
 	var fn = this;
+	if (typeof real != "boolean")
+		real = true;
 	return function() {
-		return ! (real ^ fn.apply(this, arguments));
+		return real === !!fn.apply(this, arguments);
 	};
 };
 

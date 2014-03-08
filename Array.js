@@ -648,6 +648,12 @@ return: array of n-sized arrays with the items (last array may contain less then
 	return r;
 };
 
+Array.prototype.and = function and() {
+	for (var i=0, l=this.length; i<l; i++) if (!this[i]) return false; return true;
+};
+Array.prototype.or = function or() {
+	for (var i=0, l=this.length; i<l; i++) if (this[i]) return true; return false;
+};
 
 /* https://github.com/fantasyland/fantasy-land */
 // Semigroup - concat is in ES5
@@ -663,14 +669,25 @@ Array.prototype.empty = Array.empty = function emtpy() {
 Array.prototype.ap = function ap(g) {
 	var res = [];
 	for (var i=0; i<this.length; i++)
-		for (var j=0; j<g.length; j++)
+		for (var j=0; j<g.length; j++) // @TODO: multiple arguments?
 			res.push(this[i](g[j])); // @TODO: pass thisArg, i, j?
 	return res;
 };
 Array.prototype.zipAp = function zipAp(g) {
+	var alen = arguments.length;
+	if (alen == 0) return zipAp.bind(this);
 	var res = [];
-	for (var i=0; i<this.length && i<g.length)
-		res.push(this[i](g[i])); // @TODO: pass thisArg, i?
+	if (alen == 1)
+		for (var i=0; i<this.length && i<g.length; i++)
+			res.push(this[i](g[i])); // @TODO: pass thisArg, i?
+	else {
+		var args = [];
+		for (var i=0; i<this.length; i++) { // @FIXME: min(pluck("length"))
+			for (var j=0; j<alen; j++)
+				args[j] = arguments[j][i];
+			res.push(this[i].apply(null, args));
+		}
+	}
 	return res;
 };
 
