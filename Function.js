@@ -6,7 +6,7 @@ Function.prototype.callarg = function(context/*, arg1, ...*/) {
 	return function() {
 		return Function.prototype.call.apply(fn, args);
 	};
-}
+};
 
 /* Function.prototype.bind */
 
@@ -20,7 +20,7 @@ Function.prototype.argwith = function(/*arg1, ...*/) {
 	return function(context) {
 		return fn.apply(context, args);
 	};
-}
+};
 
 Function.prototype.argcall = function(/*arg1, ...*/) {
 	var fn = this,
@@ -28,11 +28,11 @@ Function.prototype.argcall = function(/*arg1, ...*/) {
 	return function(context/*, argM, ...*/) {
 		return fn.apply(context, args.concat(Array.prototype.slice.call(arguments, 1)));
 	};
-}
+};
 
 /* Function.prototype. = function() {
 
-} */
+}; */
 
 Function.prototype.arg = function(/*arg1, ...*/) {
 	var fn = this,
@@ -40,7 +40,7 @@ Function.prototype.arg = function(/*arg1, ...*/) {
 	return function() {
 		return fn.apply(this, args);
 	};
-}
+};
 
 Function.prototype.pcall = Function.prototype.partial = function() {
 	if (arguments.length < 1)
@@ -50,7 +50,7 @@ Function.prototype.pcall = Function.prototype.partial = function() {
 	return function(/*argM, ...*/) {
 		return fn.apply(this, args.concat(Array.prototype.slice.call(arguments)));
 	};
-}
+};
 
 Object.keys(Function.prototype).concat(["bind"]).forEach(function(method) {
 	Function[method] = function(fn) {
@@ -106,19 +106,26 @@ Function.prototype.result = function result(r) {
 		fn.apply(this, arguments);
 		return r;
 	};
-}
+};
 
 Function.prototype.bool = function(real) {
 /* get: boolean real: whether the result should be returned as it is or get inverted
 return: the functions result converted to boolean, optionally inverted */
 	var fn = this;
+	if (typeof real != "boolean")
+		real = true;
 	return function() {
-		return ! (real ^ fn.apply(this, arguments));
+		return real === !!fn.apply(this, arguments);
 	};
-}
+};
 
 Function.ident = Function.identity = Function.I = function identity(x) {
 	return x;
+};
+Function.const = function(x) {
+	return function() {
+		return x;
+	};
 };
 Function.noop = function noop() {};
 
@@ -154,7 +161,7 @@ Function.prototype.nest = function nest(n) {
 		};
 	else
 		// TODO: warning
-		return Function.idendity;
+		return Function.identity;
 }
 
 Function.Named = function NamedFunction(name, args, body, scope, values) {
@@ -178,4 +185,33 @@ Function.invoke = function(fn) {
 		return function(obj) {
 			return obj[fn].apply(obj, args);
 		};
+};
+
+/* https://github.com/fantasyland/fantasy-land */
+// Functor
+Function.prototype.map = function map(g) {
+	// Function.compose(g, this)
+	var f = this;
+	return function() {
+		return g(f.apply(this, arguments));
+	};
+};
+
+// Applicative
+Function.prototype.ap = function ap(g) {
+	var f = this;
+	return function() {
+		return f.apply(this, arguments)(g.apply(this, arguments));
+	};
+};
+// Applicative, Monad
+Function.prototype.of = Function.of = Function.const;
+
+// Chain, Monad
+// f.chain(g).chain(h) == ()=>h(g(f.apply()).apply()).apply() == ()=>g(f.apply()).chain(h).apply() == f.chain((x)=>g(x).chain(h))
+Function.prototype.chain = function chain(g) {
+	var f = this;
+	return function() {
+		return g(f.apply(this, arguments)).apply(this, arguments);
+	};
 };

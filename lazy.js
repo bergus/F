@@ -1,8 +1,3 @@
-Function.const = function(x) {
-	return function() {
-		return x;
-	};
-};
 function Lazy(fn, args, context) {
 	if (!args)
 		return Lazy.fmap(fn);
@@ -21,7 +16,7 @@ function Lazy(fn, args, context) {
 }
 Lazy.prototype.lazy = true;
 
-Lazy.fmap = function map(fn) {
+Lazy.fmap = function fmap(fn) {
 	return function() {
 		return new Lazy(fn, arguments, this);
 	};
@@ -48,6 +43,8 @@ function lazy(fn, args) {
 	execute.lazy = true;
 	return execute;
 }
+
+
 function fmap(fn) {
 	return function() {
 		if (this == null)
@@ -56,3 +53,16 @@ function fmap(fn) {
 		return lazy(Function.prototype.call.bind(fn), arguments);
 	};
 }
+
+/* better garbage collection (of fn and args) with this pattern:
+function lazy(fn, args, context) {
+	var result = null;
+	var todo = function() {
+		todo = false;
+		return result = fn.apply(context, args);
+	};
+	return function() {
+		return !todo ? result : todo();
+	};
+}
+*/

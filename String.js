@@ -41,19 +41,26 @@ if (!String.prototype.trimLeft) String.prototype.trimLeft = function () {
 
 
 // Own implementations
+String.prototype.bin = function bin() {
+	return this.charAt(0) == "1"
+		? -parseInt(this.substr(1).replace(/[01]/g, function(d){return +!+d;}), 2)-1
+		: parseInt(this.substr(1), 2);
+};
 String.prototype.hex = function hex() {
 	return parseInt(this, 16);
 };
 String.prototype.dez = function dez() {
 	alert("deprecated: String.dez!");
 	throw new Error();
-	return parseInt(this, 16);
+	return parseInt(this, 16); // sic!
 };
 String.prototype.padleft = function padleft(len, cha) {
-	return (this.length<len)?((typeof cha=="string"?cha:" ")+this).padleft(len,cha):this.substr(0,len);
+	cha = String(cha) || " ";
+	return (new Array(1+~~(len/cha.length)).join(cha) + this).substr(-len);
 };
 String.prototype.padright = function padright(len, cha) {
-	return (this.length<len)?(this+(typeof cha=="string"?cha:" ")).padright(len,cha):this.substr(0,len);
+	cha = String(cha) || " ";
+	return (this + new Array(1+~~(len/cha.length)).join(cha)).substr(0, len);
 };
 String.prototype.repeat = function repeat(times) {
 	for(var r = ""; --times >= 0; r+=this);
@@ -132,19 +139,19 @@ String.prototype.rot13 = function rot13() {
 };
 String.prototype.rescape = String.prototype.regExp = function regExp(save) {
 	return this.replace(save
-		? /([\\+*?\[^\]$(){}=!<>|:\-])/g // PHP: PRCE preg_quote  =!<> dürften in JS unerheblich sein, / wird von new RegExp() maskiert
-		: /([{}()[\]\\.?*+^$|=!:~-])/g //-> {}()[\]\\.?*+^$|=!:~- // Bergi
-		/*/([.*+?^=!:${}()|[\]\/\\])/g   -> {}()[\]\\.?*+^$|=!:\/ // Prototype 1.7
-		  /([-.*+?^${}()|[\]\/\\])/g     -> {}()[\]\\.?*+^$|-     // MooTools
-		  /([{}()|.?*+^$\[\]\\\/])/g     -> {}()[\]\\.?*+^$|\/    // Codeispoetry, Umherirrender
-		  /([.?*+^$[\]\\(){}-])/g        -> {}()[\]\\.?*+^$-      // http://stackoverflow.com/questions/2593637/how-to-escape-regular-expression-in-javascript
-		  /([\\{}()|.?*+\-^$\[\]])/g     -> {}()[\]\\.?*+^$|-     // /1.17wmf1/resources/mediawiki/mediawiki.js (kopiert von jQuery)
-		  /([\/()[\]{}|*+-.,^$?\\])/g    -> {}()[\]\\.?*+^$|-,\/  // base2    
+		? /[\\+*?\[^\]$(){}=!<>|:-]/g // PHP: PRCE preg_quote  =!<> dürften in JS unerheblich sein, / wird von new RegExp() maskiert
+		: /[{}()[\]\\.?*+^$|=!:~-]/g //-> {}()[\]\\.?*+^$|=!:~- // Bergi
+		/*/[.*+?^=!:${}()|[\]\/\\]/g   -> {}()[\]\\.?*+^$|=!:\/ // Prototype 1.7
+		  /[-.*+?^${}()|[\]\/\\]/g     -> {}()[\]\\.?*+^$|-     // MooTools
+		  /[{}()|.?*+^$\[\]\\\/]/g     -> {}()[\]\\.?*+^$|\/    // Codeispoetry, Umherirrender
+		  /[.?*+^$[\]\\(){}-]/g        -> {}()[\]\\.?*+^$-      // http://stackoverflow.com/questions/2593637/how-to-escape-regular-expression-in-javascript
+		  /[\\{}()|.?*+\-^$\[\]]/g     -> {}()[\]\\.?*+^$|-     // /1.17wmf1/resources/mediawiki/mediawiki.js (kopiert von jQuery)
+		  /[\/()[\]{}|*+-.,^$?\\]/g    -> {}()[\]\\.?*+^$|-,\/  // base2
 		*/
-	, "\\$1");
+	, "\\$&");
 };
 String.prototype.mask = function mask(chars, maske) {
-	return this.replace(new RegExp("(["+chars+"])","g"), (maske || "\\")+"$1"); //chars maskieren?
+	return this.replace(new RegExp("["+chars+"]","g"), (maske || "\\")+"$&"); //chars maskieren?
 };
 /* STRING-PART TEST *
 var s = "abcd",
