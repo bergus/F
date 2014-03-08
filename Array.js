@@ -1,4 +1,4 @@
-﻿Array.toArray = Array.from = function(o) {
+﻿Array.toArray = Array.from = function(o) { // @FIXME: Make ES6-compatible
 /* get: array-ähnliches Objekt mit Länge "length" und ggf. Einträgen
 return: echtes Array */
 	if (! o)
@@ -651,6 +651,12 @@ return: array of n-sized arrays with the items (last array may contain less then
 
 /* https://github.com/fantasyland/fantasy-land */
 // Semigroup - concat is in ES5
+
+// Monoid
+Array.prototype.empty = Array.empty = function emtpy() {
+	return [];
+};
+
 // Functor - map is in ES5
 
 // Applicative
@@ -658,22 +664,31 @@ Array.prototype.ap = function ap(g) {
 	var res = [];
 	for (var i=0; i<this.length; i++)
 		for (var j=0; j<g.length; j++)
-			res.push(this[i](g[j]));
+			res.push(this[i](g[j])); // @TODO: pass thisArg, i, j?
 	return res;
 };
 Array.prototype.zipAp = function zipAp(g) {
 	var res = [];
 	for (var i=0; i<this.length && i<g.length)
-		res.push(this[i](g[i]));
+		res.push(this[i](g[i])); // @TODO: pass thisArg, i?
 	return res;
 };
 
 // Applicative, Monad
-Array.prototype.of = Array.of; // @FIXME as defined in ES6
+if (typeof Array.of != "function") // - is in ES6
+	Array.of = function of() {
+		var len = arguments.length,
+		    a = new (typeof this == "function" ? this : Array)(len);
+		for (var i=0; i<len; i++)
+			a[i] = arguments[i];
+		a.length = len;
+		return a;
+	};
+Array.prototype.of = Array.of;
 
 // Chain, Monad
 Array.prototype.chain = Array.prototype.concatMap = function chain(g) {
-	return Array.prototype.concat.apply([], this.map(g));
+	return Array.prototype.concat.apply([], this.map(g, arguments[1]));
 };
 
 Object.keys(Array.prototype).concat(
