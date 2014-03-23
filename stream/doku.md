@@ -6,6 +6,8 @@ Invariants and Contracts
 * dispatcher.start SHOULD only be invoked asynchronically, i.e. in a dedicated event loop cycle
 * dispatcher.start MUST NOT be invoked during a dispatch phase
 * A listener MUST NOT be executed when there is a waiting continuation with smaller priority value
+  NOTE: A listener MAY be executed even if there are other, not yet fired listeners with smaller priority value
+        A stream MUST fire its listeners not before the dependant continuations have been called
 * The priority of a (yielded, therefore waiting) continuation MUST not be changed
 * A continuation MUST NOT yield a continuation with lower priority than itself
 * `addListener(l)` does increase or create the `l.priority` property

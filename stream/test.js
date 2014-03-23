@@ -4,6 +4,15 @@ var a = new Clock(2000),
     b = sample(a, Math.random),
     c = ValueStream.for(function(){ return b+1; }); // yes, b instanceof ValueStream!
 
+var a = new Clock(10000),
+    b = sample(a, Math.random),
+    c = b.switchValue(function(r) {
+        var d = new Clock(1300),
+            i = 0,
+            e = sample(d, function(){ return r+ i++; });
+        return e;
+    });
+
 var mouse = getEventStream(document, "mousemove")
     position = mouse.get("clientX"),
     barleft = position.map(add(-50)),

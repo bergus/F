@@ -459,6 +459,72 @@ var dispatcher = (function() {
 }());
 Stream.dispatch = dispatcher.start;
 
+ValueStream.prototype.map = function map(fn) {
+	var stream = this;
+	return new ValueStream(function(fire, propagatePriority) {
+		function listener() {
+			return fire([fn.apply(this, arguments)]);
+		}
+		listener.priority = 0;
+		listener.setPriority = function(p) {
+			this.priority = p;
+			return propagatePriority(p).getContinuation();
+		};
+		
+		return Function.delegateName({
+			go: function go() {
+				stream.addListener(listener);
+				propagatePriority(listener.priority);
+			},
+			stop: function stop() {
+				stream.removeListener(listener);
+			}
+		});
+	});
+};
+ValueStream.prototype.switchValue = function switchValue(fn) {
+	var stream = this;
+	return new ValueStream(function(fire, propagatePriority) {
+		var cur = null,
+			val = null;
+		function propagateVal() {
+			return fire(val);
+		}
+		propagateVal.piority = 1;
+		function streamListener() {
+			if (cur)
+				cur.removeListener(listener);
+			listener.priority = 0;
+			cur = fn.apply(this, arguments);
+			cur.addListener(listener);
+			propagateVal.priority = Math.max(listener.priority, streamListener.priority + 1);
+			return propagatePriority(propagateVal.priority + 1).add(fire(val)).getContinuation();
+		}
+		streamListener.priority = 0;
+		function listener() {
+			val = arguments;
+			return propagateVal;
+		}
+		streamListener.setPriority = listener.setPriority = function(p) {
+			if (this.priority >= p) return;
+			this.priority = p;
+			propagateVal.priority = Math.max(listener.priority, streamListener.priority + 1);
+			return propagatePriority(propagateVal.priority + 1).getContinuation();
+		}
+		
+		return Function.delegateName({
+			go: function go() {
+				stream.addListener(streamListener);
+			},
+			stop: function stop() {
+				cur.removeListener(listener);
+				cur = val = null;
+				stream.removeListener(streamListener);
+			}
+		});
+	});
+};
+
 function PrimitiveError(p) {
 	var e = new Error(p);
 	e.name = "";

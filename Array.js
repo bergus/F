@@ -200,7 +200,7 @@ return: this */
 };
 
 Array.prototype.equals = function(b) {
-	return this.length >= b.length && this.every(function(v, i) {
+	return this.length >= b.length && Array.prototype.every.call(this, function(v, i) {
 		return v == b[i];
 	})
 };
@@ -211,7 +211,7 @@ Array.prototype.equalsBy = function(b, fn) {
 			return a.equalsBy(b, fn);
 		}
 	}
-	return this.length >= b.length && this.every(function(v, i) {
+	return this.length >= b.length && Array.prototype.every.call(this, function(v, i) {
 		return fn(v, b[i]);
 	});
 }
