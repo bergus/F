@@ -45,26 +45,25 @@ var Clock = (function() {
 					return this;
 				}
 			};
-			function go() {
-				var t = Date.now(),
-				    nexttime = timer.time = t - (t-time) % interval + interval;
-				timers.insertSorted(timer, "time"); 
-				if (!timeout || nexttime < timers[1].time) {
-					if (timeout)
+			return Function.delegateName({
+				go: function go() {
+					var t = Date.now(),
+					    nexttime = timer.time = t - (t-time) % interval + interval;
+					timers.insertSorted(timer, "time"); 
+					if (!timeout || nexttime < timers[1].time) {
+						if (timeout)
+							clearTimeout(timeout);
+						timeout = setTimeout(check, nexttime-t);
+					}
+				},
+				stop: function stop() {
+					timers.remove(timer);
+					if (!timers.length) {
 						clearTimeout(timeout);
-					timeout = setTimeout(check, nexttime-t);
+						timeout = null;
+					}
 				}
-				return stop;
-			}
-			function stop() {
-				timers.remove(timer);
-				if (!timers.length) {
-					clearTimeout(timeout);
-					timeout = null;
-				}
-				return go;
-			}
-			return go;	
+			});	
 		});
 	}
 	
