@@ -79,6 +79,7 @@ Problems (and suggested solutions)
 			  or is it necessary?
 			should this be handled by the listenermanager (and the listenercreator)?
 			why not simply pass an array of events? - only where expected or what?
+* What if they occur at the same time, but are ordered in a defined sequence?
   Use wrappers to "discretize" parallel events in own environment with own dispatch method and explicit, "parallel" output
 * Do ValueStreams update only for the last value in a sequence? No - compromises state. "SkipUpdate" might be an option for some behaviours, evaluating to a single propagated value.
                                                                of parallel events?  Yes. There is no state in between.
@@ -121,4 +122,9 @@ all, seq, allSettled:	[Monad Arg(a1,a2,..), Monad Arg(b1,b2,..),..] -> Monad Arg
 						Arg(Monad Arg(a1,a2,..), Monad Arg(b1,b2,..),..) -> Monad Arg(a1, b1, ..) -- spread or transposed?
 spread:					Monad Arg([a1,b1,..],[a2,b2,..]) -> Monad Arg(a1, b1, ..)
 transpose:				Monad Arg([a1,b1,..],[a2,b2,..]) -> Monad Arg([a1,a2,..], [b1,b2,..], ..)
+
+combine:				(Arg(a1, b1, …) -> r), [Monad Arg(a1,a2,..), Monad Arg(b1,b2,..),..] -> Monad Arg(r)
+
+merge:					[EventStream a] -> EventStream a
+zip:					[EventStream a] -> EventStream [a]
 

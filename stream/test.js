@@ -13,6 +13,14 @@ var a = new Clock(10000),
         return e;
     });
 
+var a = new Clock(2000),
+    b = sample(a, Math.random),
+    c = new Clock(3000),
+    d = sample(c, Math.random),
+    e = ValueStream.for(function(){return b+d}), // ValueStream.combine(b, d).map(function(x, y){return x+y})
+    f = ValueStream.combine(b, d, e);
+
+
 var mouse = getEventStream(document, "mousemove")
     position = mouse.get("clientX"),
     barleft = position.map(add(-50)),

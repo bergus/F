@@ -356,7 +356,7 @@ ValueStream.of = function() {
 	});
 };
 
-ValueStream["for"] = function(fn) {
+ValueStream["for"] = function(expression) {
 	return new ValueStream(function(fire, propagatePriority) {
 		var watching = false,
 		    deps = [],
@@ -371,7 +371,7 @@ ValueStream["for"] = function(fn) {
 				execute.priority = prio+1;
 				return execute;
 			}
-			var cont = fire(dispatcher.evaluate(fn, deps, listener));
+			var cont = fire(dispatcher.evaluate(expression, deps, listener));
 			watching = false; // @FIXME: Put before fire()?
 			return cont;
 		}
@@ -394,7 +394,7 @@ ValueStream["for"] = function(fn) {
 		return Function.delegateName({
 			go: function go() {
 				watching = true; // no need to yield `execute` from the listeners
-				fire(dispatcher.evaluate(fn, deps, listener)); // assuming we're not currently dispatching. @TODO?
+				fire(dispatcher.evaluate(expression, deps, listener)); // assuming we're not currently dispatching. @TODO?
 				watching = false;
 				prio = listener.priority;
 				execute.priority = prio+1;
@@ -520,6 +520,65 @@ ValueStream.prototype.switchValue = function switchValue(fn) {
 				cur.removeListener(listener);
 				cur = val = null;
 				stream.removeListener(streamListener);
+			}
+		});
+	});
+};
+ValueStream.combine = function() {
+	var streams = Array.prototype.concat.apply([], arguments),
+	    l = streams.length;
+	return new ValueStream(function(fire, propagatePriority) {
+		var listeners = new Array(l),
+		    prio = 0, // max priority of the listeners
+		    values = new Array(l),
+		    watching = false;
+		function setPriority(p) {
+			if (p <= prio || p <= this.priority)
+				return;
+			prio = this.priority = p;
+			propagateValue.priority = prio+1;
+			return propagatePriority(prio+1).getContinuation();
+		}
+		
+		function propagateValue() {
+			if (propagateValue.priority <= prio) {
+				propagateValue.priority = prio+1;
+				return propagateValue;
+			}
+			watching = false;
+			return fire(values.slice());
+		}
+		function makeListener(i) {
+			function listener(v) {
+				values[i] = v;
+				if (!watching) {
+					watching = true;
+					return propagateValue; // ...but yields the update continuation
+				}
+			}
+			listener.setPriority = setPriority;
+			return listener;
+		}
+		for (var i=0; i<l; i++)
+			listeners[i] = makeListener(i);
+		
+		return Function.delegateName({
+			go: function go() {
+				watching = true; // don't return the continuation on initialisation
+				for (var i=0; i<l; i++) {
+					streams[i].addListener(listeners[i]);
+					if (listeners[i].priority > prio)
+						prio = listeners[i].priority;
+				}
+				propagateValue.priority = prio+1;
+				propagatePriority(prio+1);
+				// console.assert(typeof propagatePriority(prio+1).getContinuation() == "function", "ValueStream.combine: propagating priority during go() requires continuation dispatch");
+				watching = false;
+				fire(values.slice());
+			},
+			stop: function stop() {
+				for (var i=0; i<l; i++)
+					streams[i].removeListener(listeners[i]);
 			}
 		});
 	});
