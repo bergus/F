@@ -1,11 +1,11 @@
 /* Code examples of how to use Streams */
 
 var a = new Clock(2000),
-    b = sample(a, Math.random),
+    b = a.poll(Math.random),
     c = ValueStream.for(function(){ return b+1; }); // yes, b instanceof ValueStream!
 
 var a = new Clock(10000),
-    b = sample(a, Math.random),
+    b = a.poll(Math.random),
     c = b.switchValue(function(r) {
         var d = new Clock(1300),
             i = 0,
@@ -14,12 +14,14 @@ var a = new Clock(10000),
     });
 
 var a = new Clock(2000),
-    b = sample(a, Math.random),
+    b = a.poll(Math.random),
     c = new Clock(3000),
-    d = sample(c, Math.random),
+    d = c.poll(Math.random),
     e = ValueStream.for(function(){return b+d}), // ValueStream.combine(b, d).map(function(x, y){return x+y})
     f = ValueStream.combine(b, d, e);
 
+var a = new Clock(1000),
+    count = a.scan(function(c) { return c+1; }, 0); // how many events a has emitted since its creation. Not lazy!
 
 var mouse = getEventStream(document, "mousemove")
     position = mouse.get("clientX"),

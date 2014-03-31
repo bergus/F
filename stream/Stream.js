@@ -136,6 +136,68 @@ Stream.prototype.dispatchEvent = function() {
 	throw new Error("InvalidStateError: Stream::dispatchEvent must not be invoked from outside");
 };
 
+
+Stream.prototype.poll = function poll(fn) {
+	// builds a ValueStream for the result of executing `fn()`, updates (executes `fn`) every time `eventStream` fires
+	var eventStream = this;
+	return new ValueStream(function(fire, propagatePriority) {
+		function listener() {
+			return fire([fn()]);
+		}
+		listener.setPriority = function(p) {
+			this.priority = p;
+			return propagatePriority(p).getContinuation();
+		};
+		
+		return Function.delegateName({
+			go: function go() {
+				eventStream.addListener(listener);
+				listener();
+				propagatePriority(listener.priority);
+			},
+			stop: function stop() {
+				eventStream.removeListener(listener);
+			}
+		})
+	});
+};
+
+Stream.prototype.scan = function scan(fn, value) {
+	// builds a ValueStream by scanning over the `eventStream` values, fn is called with the previous result and the new value every time it fires
+	var eventStream = this;
+	return new ValueStream(function(fire, propagatePriority) {
+		var active = false;
+		function listener() {
+			Array.prototype.unshift.call(arguments, value);
+			value = fn.apply(this, arguments);
+			if (active)
+				return fire([value]);
+		}
+		listener.setPriority = function(p) {
+			this.priority = p;
+			return propagatePriority(p).getContinuation();
+		};
+		
+		// add it immediately to start collecting events
+		eventStream.addListener(listener);
+		
+		return Function.delegateName({
+			go: function go() {
+				fire([value]);
+				active = true;
+				propagatePriority(listener.priority);
+			},
+			stop: function stop() {
+				active = false; // does not stop collecting values!
+			},
+			destroy: function destroy() {
+				eventStream.removeListener(listener);
+			}
+		})
+	});
+};
+
+
 function EventStream(fn, context) {
 	var that = this,
 	    listeners = [],
@@ -683,29 +745,6 @@ function compose(streams) {
 	});
 }
 
-function sample(eventStream, fn) {
-	// builds a ValueStream for the result of executing `fn()`, updates (executes `fn`) every time `eventStream` fires 
-	return new ValueStream(function(fire, propagatePriority) {
-		function listener() {
-			return fire([fn()]);
-		}
-		listener.setPriority = function(p) {
-			this.priority = p;
-			return propagatePriority(p).getContinuation();
-		};
-		
-		return Function.delegateName({
-			go: function go() {
-				eventStream.addListener(listener);
-				listener();
-				propagatePriority(listener.priority);
-			},
-			stop: function stop() {
-				eventStream.removeListener(listener);
-			}
-		})
-	});
-}
 
 Array.prototype.insertSorted = function(el, by) {
 	if (typeof by != "function")

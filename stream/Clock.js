@@ -66,6 +66,7 @@ var Clock = (function() {
 			});	
 		});
 	}
+	Clock.prototype = Object.create(Stream.prototype, {constructor: {value: Clock}});
 	
 	return Clock;
 })();
