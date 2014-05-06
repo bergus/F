@@ -3,7 +3,11 @@ Naming
 
 Data structures:
 
-> Stream Flow Behaviour List Sequence Node Bus Property Eventstream Signal Series Pipe Channel EventEmitter Variable
+> Stream Flow List Node Property Eventstream Eventsource Signal Series EventEmitter Variable
+>
+>> Bus Pipe Channel: plugged between source and drain
+>> Sequence: something that ends
+>> Behaviour: continuous-time varying value (with "time function" part)
 >
 > data item event element value packet error
 

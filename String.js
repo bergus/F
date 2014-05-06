@@ -114,7 +114,7 @@ String.prototype.replaceChars = function replaceChars(map) {
 	var i, reg = "";
 	for (i in map)
 		reg += i;
-	return this.replace(new RegExp("["+reg.replace(/(\]|-)/,"\\$1")+"]",'g'), function(char) { return map[char]; });
+	return this.replace(new RegExp("["+reg.replace(/(\]|-|\\)/,"\\$1")+"]",'g'), function(char) { return map[char]; });
 };
 /* String.specialChars = {
 	'\b': "\\b",

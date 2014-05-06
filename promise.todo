@@ -30,6 +30,8 @@
 	a Promise to be fulfilled when the final state is reached
 	implements a full finite-state-machine
 
+(a -> Promise b) ist ein Arrow
+(Promise.race :: [Promise a] -> Promise a) mit Cancellation
 // message-Konzept ausarbeiten (Kettendurchlauf?)
 // Start-Stop-Konzept ausarbeiten
 // insbesondere bei Verzweigungen nur eigene Zweige anhalten? Implementation im endlichen Automaten?

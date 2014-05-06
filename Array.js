@@ -64,12 +64,12 @@ return: Array mit allen möglichen Untermengen von a (alle Arrays, deren Element
 }
 
 Array.build = function(n, fn, context) {
-/* get: ( number, function[, context] | number, number[, number] | number, string[, number] | number, any )
+/* get: ( number, (function[, context] | number[, number] | string[, number] | any) )
 return: an Array with n items - build depending on typeof fn */
 	var ret = new Array(n);
 	if (typeof fn == "function")
 		for (var i=0; i<n; i++)
-			ret[i] = fn.call(context || null, i, ret/*, ret.last*/);
+			ret[i] = fn.call(context, i, ret/*, ret.last*/);
 	else if (typeof fn == "number")
 		for (var i=0; i<n; i++)
 			ret[i] = context ? (i*fn)%context : i*fn;

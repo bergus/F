@@ -55,3 +55,6 @@ Examples
 
 Drag'n'Drop: ValueStream of Promises (for drop actions) that fire Progress-EventStreams for the drag-animation
 Resettable Timer: ValueStream of Clock-Behaviors or Interval-EventStreams -> flatten to Stream of "reset" and "tick" events
+IRC server: Collections of Connections/Users and Rooms, firing messages and dynamically /joining or /quitting rooms
+A little game like 2048 with userinput and screenoutput
+Basic Todo-List Example with localstorage persistency
