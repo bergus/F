@@ -116,6 +116,9 @@ Problems (and suggested solutions)
 			`run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b`
 			@TODO check FRP paper on exact type signature
 * Can `fire` and `propagatePriority` be used as a listener and it's setPriority method, for most easy (performant?) chaining?
+* Circular dependent components:
+  - game (input events -> state) and player (state[, game events] -> actions)
+  - filtering a collection by attributes, greying out non-availabe attribute values in the filter interface
 
 Methods and Functions proposals
 -------------------------------
