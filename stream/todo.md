@@ -111,6 +111,28 @@ Problems (and suggested solutions)
 			A behaviour listener could happen to be called multiple times for initialisation, but should only use the last of these values
 			Identity is expected: `anyStream.flatMap(_ -> someStream) = someStream`
 * How can an EventStream.getLastEvent() ValueStream be garbage-collected? Does it need to be explicitly stopped?
+  
+  idea: something along the lines of
+  Stream.prototype.fork = function(o) {
+  	if (o == null) {
+  		o = Object.create(Object.getPrototypeOf(this));
+  		for (var p in this)
+  			if (this.hasOwnProperty(p))
+  				o[p] = this[p];
+  	}
+  	var disposed = false,
+  		that = this;
+  	o.dispose = function() {
+  		if (disposed) return;
+  		disposed = true;
+  		if (! --that.forks)
+  			that.dispose();
+  		o.dispose = noop; // garbage collect!
+  	};
+  	this.forks = (this.forks || 0) + 1;
+  	return o;
+  }
+  though "dispose" might use send() actually
  
 * How is the outside world representated? Isn't there a circular event stream?
 			`run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b`
