@@ -164,16 +164,15 @@ Function.prototype.nest = function nest(n) {
 }
 
 Function.Named = function NamedFunction(name, args, body, scope, values) {
-	var i = 1;
 	if (typeof args == "string")
 		values = scope, scope = body, body = args, args = [];
 	if (!Array.isArray(scope) || !Array.isArray(values)) {
 		if (typeof scope == "object")
 			values = Object.values(scope), scope = Object.keys(scope);
 		else
-		    values = [], scope = [];
+			values = [], scope = [];
 	}
-	return Function.apply(null, scope.concat("function "+name+" ("+args.join(", ")+") {\n"+body+"\n}\nreturn "+name+";")).apply(null, values);
+	return Function(scope, "function "+name+"("+args.join(", ")+") {\n"+body+"\n}\nreturn "+name+";").apply(null, values);
 };
 
 Function.invoke = function(fn) {
