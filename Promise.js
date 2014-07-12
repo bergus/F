@@ -1,11 +1,15 @@
-function Promise(fn) {
+function Promise(opt) {
 	var values, error;
 	var successHandlers = [],
 	    errorHandlers = [];
 	
 	this.fork = function(onsuccess, onerror) {
 	// registers the onsuccess and onerror continuation handlers
-	// if the promise is already resolved, it returns a continuation to execute them (and possibly others) asap
+	// if the promise is already resolved, it returns a continuation to execute
+	//    them (and possibly other waiting ones) so that the handlers are *not immediately* executed
+	// if the promise is not yet resolved, but there is a continuation waiting to
+	//    do so (and continuatively execute the handlers), that one is returned
+	// else undefined is returned
 		if (!error && typeof onsuccess == "function")
 			successHandlers.push(onsuccess);
 		if (!values && typeof onerror == "function")
@@ -18,10 +22,10 @@ function Promise(fn) {
 		else if (error)
 			return Promise.makeCallback(errorHandlers, [error]);
 		else
-			return go; // go (the continuation of the fn call) might be returned (and then called) multiple times!
+			return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
 	};
 	
-	var go = fn(Promise.makeResolver(function fulfill() {
+	var go = opt.call(this, Promise.makeResolver(function fulfill() {
 		if (values || error) throw new Error("cannot fulfill already resolved promise");
 		values = arguments;
 		errorHandlers.length = 0;
@@ -42,13 +46,9 @@ Promise.makeCallback = function makeCallback(handlers, args) {
 	if (!handlers.length) return;
 	return handlers.runner || (handlers.runner = function runner() {
 		if (!handlers.length) return;
-		/* or just:
-		while (handlers.length > 1) Promise.run(handlers.shift().apply(null, args));
-		return handlers.shift().apply(null, args); */
-		var next = handlers.shift().apply(null, args);
-		if (!handlers.length) return next;
-		Promise.run(next); // mutually recursive call fork for multiple handlers
-		return runner;
+		while (handlers.length > 1)
+			Promise.run(handlers.shift().apply(null, args)); // "mutually" recursive call to run() in case of multiple handlers
+		return handlers.shift().apply(null, args);
 	});
 };
 Promise.makeResolver = function makeResolver(r) {
@@ -87,3 +87,50 @@ Promise.of = function() {
 		f.apply(null, args); // assert: === undefined
 	});
 };
+
+Promise.reject = function() {
+	var args = arguments;
+	return new Promise(function(f, r) {
+		r.apply(null, args); // assert: === undefined
+	});
+};
+
+Promise.timeout = function(ms, v) {
+	return new Promise(function(f) {
+		setTimeout(f.sync.bind(f, v), ms);
+	});
+};
+
+Promise.all = function(promises) {
+	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
+	return new Promise(function(fulfill, reject) {
+		var length = promises.length,
+			results = [new Array(length)];
+		return Promise.makeCallback(promises.map(function(promise, i) {
+			return promise.fork(function(r) {
+				if (arguments.length == 1)
+					results[0][i] = r;
+				else
+					for (var j=0; j<arguments.length; j++) {
+						if (results.length <= j)
+							results[j] = [];
+						results[j][i] = arguments[j];
+					}
+				if (--length == 0)
+					return fulfill.apply(null, results);
+			}, reject);
+		}).filter(Boolean), []);
+	});
+};
+
+/*
+Promise.race = function(promises) {
+	return new Promise(function(fulfill, reject) {
+		return Promise.makeCallback(promises.map(function(promise, i) {
+			// 	for (var j=0; j<promises.length; j++)
+			// 		if (j != i)
+			// 			promises[j].cancel()
+			return promise.fork(fulfill, reject); // throws!
+		}).filter(Boolean), []);
+	})
+}; */
