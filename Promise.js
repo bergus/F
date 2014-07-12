@@ -18,31 +18,39 @@ function Promise(opt) {
 		   Function.prototype.apply.bind(onsuccess, null, values); or Function.prototype.apply.bind(onerror, null, [error]); respectively */
 		
 		if (values)
-			return Promise.makeCallback(successHandlers, values);
+			return Promise.makeContinuation(successHandlers, values);
 		else if (error)
-			return Promise.makeCallback(errorHandlers, [error]);
+			return Promise.makeContinuation(errorHandlers, [error]);
 		else
 			return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
 	};
 	
 	var go = opt.call(this, Promise.makeResolver(function fulfill() {
-		if (values || error) throw new Error("cannot fulfill already resolved promise");
+		if (values || error) return; // throw new Error("cannot fulfill already resolved promise");
 		values = arguments;
 		errorHandlers.length = 0;
-		return Promise.makeCallback(successHandlers, values);
+		return Promise.makeContinuation(successHandlers, values);
 	}), Promise.makeResolver(function reject(e) {
-		if (values || error) throw new Error("cannot reject already resolved promise");
+		if (values || error) return; // throw new Error("cannot reject already resolved promise");
 		error = e || new Error(e); // arguments?
 		successHandlers.length = 0;
-		return Promise.makeCallback(errorHandlers, [error]);
+		return Promise.makeContinuation(errorHandlers, [error]);
 	}));
-	setImmediate(Promise.run.bind(Promise, go)); // this in not very efficient, but ensures basic execution of "dependencies"
+	Promise.runAsync(go); // this ensures basic execution of "dependencies"
 }
+
 Promise.run = function run(cont) {
+	// scheduled continuations are not unscheduled. They just might be executed multiple times (but should not do anything twice)
 	while (typeof cont == "function")
 		cont = cont();
 };
-Promise.makeCallback = function makeCallback(handlers, args) {
+Promise.runAsync = function runAsync(cont) {
+	if (typeof cont != "function" || cont.isScheduled) return;
+	cont.isScheduled = true;
+	setImmediate(Promise.run.bind(Promise, cont));
+};
+
+Promise.makeContinuation = function makeContinuation(handlers, args) {
 	if (!handlers.length) return;
 	return handlers.runner || (handlers.runner = function runner() {
 		if (!handlers.length) return;
@@ -52,12 +60,12 @@ Promise.makeCallback = function makeCallback(handlers, args) {
 	});
 };
 Promise.makeResolver = function makeResolver(r) {
-	// extends a fulfill/reject resolver continuation with methods to actually execute them
+	// extends a fulfill/reject resolver with methods to actually execute the continuations they might return
 	r.sync = function() {
 		Promise.run(r.apply(this, arguments));
 	};
 	r.async = function() {
-		setImmediate(Function.prototype.apply.bind(r.sync, this, arguments));
+		Promise.runAsync(r.apply(this, arguments)); // this creates the continuation immediately
 	};
 	return r;
 };
@@ -106,7 +114,7 @@ Promise.all = function(promises) {
 	return new Promise(function(fulfill, reject) {
 		var length = promises.length,
 			results = [new Array(length)];
-		return Promise.makeCallback(promises.map(function(promise, i) {
+		return Promise.makeContinuation(promises.map(function(promise, i) {
 			return promise.fork(function(r) {
 				if (arguments.length == 1)
 					results[0][i] = r;
@@ -126,7 +134,7 @@ Promise.all = function(promises) {
 /*
 Promise.race = function(promises) {
 	return new Promise(function(fulfill, reject) {
-		return Promise.makeCallback(promises.map(function(promise, i) {
+		return Promise.makeContinuation(promises.map(function(promise, i) {
 			// 	for (var j=0; j<promises.length; j++)
 			// 		if (j != i)
 			// 			promises[j].cancel()
