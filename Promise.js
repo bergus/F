@@ -1,18 +1,22 @@
-function FulfilledPromise(args) {
-	var handlers = [];
-	this.fork = function(onsuccess, onerror) {
-		if (typeof onsuccess == "function")
-			handlers.push(onsuccess);
-		return Promise.makeContinuation(handlers, args);
-	};
+function makeResolvedPromiseConstructor(i) {
+	return function ResolvedPromise(args) {
+		var handlers = [];
+		function runner() {
+			if (!handlers.length) return;
+			while (handlers.length > 1)
+				Promise.run(handlers.shift().apply(null, args)); // "mutually" recursive call to run() in case of multiple handlers
+			return handlers.shift().apply(null, args);
+		}
+		this.fork = function(onsuccess, onerror) {
+			var handler = [onsuccess, onerror][i];
+			if (typeof handler == "function")
+				handlers.push(handler);
+			return runner;
+		};
+	}
 }
-function RejectedPromise(args) {
-	this.fork = function(onsuccess, onerror) {
-		if (typeof onerror == "function")
-			handlers.push(onerror);
-		return Promise.makeContinuation(handlers, args);
-	};
-}
+var FulfilledPromise = makeResolvedPromiseConstructor(0);
+var RejectedPromise =  makeResolvedPromiseConstructor(1);
 	
 function AssimilatingPromise(opt) {
 	var resolution = null,
@@ -31,7 +35,7 @@ function AssimilatingPromise(opt) {
 		return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
 	};
 	
-	var go = opt.call(this, function resolve(r) {
+	var go = opt.call(this, function assimilate(r) {
 		if (resolution) return;
 		resolution = r;
 		for (var i=0; i<handlers.length; i++)
@@ -43,8 +47,21 @@ function AssimilatingPromise(opt) {
 }
 
 function Promise(opt) {
-	AssimilatingPromise.call(this, function(resolve) {
-		return opt.call(this, Promise.makeResolver(resolve, FulfilledPromise), Promise.makeResolver(resolve, RejectedPromise));
+	AssimilatingPromise.call(this, function(assimilate) {
+		function makeResolver(constructor) {
+		// creates a fulfill/reject resolver with methods to actually execute the continuations they might return
+			function r() {
+				return assimilate(new constructor(arguments));
+			}
+			r.sync = function() {
+				Promise.run(assimilate(new constructor(arguments)));
+			};
+			r.async = function() {
+				Promise.runAsync(assimilate(new constructor(arguments))); // this creates the continuation immediately
+			};
+			return r;
+		}
+		return opt.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise));
 	}) 
 }
 
@@ -61,36 +78,23 @@ Promise.runAsync = function runAsync(cont) {
 	setImmediate(Promise.run.bind(Promise, cont));
 };
 
-Promise.makeContinuation = function makeContinuation(handlers, args) {
-	if (!handlers.length) return;
-	return handlers.runner || (handlers.runner = function runner() {
-		if (!handlers.length) return;
-		while (handlers.length > 1)
-			Promise.run(handlers.shift().apply(null, args)); // "mutually" recursive call to run() in case of multiple handlers
-		return handlers.shift().apply(null, args);
-	});
-};
-Promise.makeResolver = function makeResolver(resolve, constructor) {
-	// creates a fulfill/reject resolver with methods to actually execute the continuations they might return
-	function r() {
-		return resolve(new constructor(arguments));
-	}
-	r.sync = function() {
-		Promise.run(resolve(new constructor(arguments)));
+Promise.joinContinuations = function joinContinuations(continuations) {
+	if (continuations.length <= 1) return continuations[0];
+	return function runner() {
+		if (!continuations.length) return;
+		while (continuations.length > 1)
+			Promise.run(continuations.shift()); // "mutually" recursive call to run() in case of multiple continuations
+		return continuations.shift();
 	};
-	r.async = function() {
-		Promise.runAsync(resolve(new constructor(arguments))); // this creates the continuation immediately
-	};
-	return r;
 };
 
 Promise.prototype.map = function chain(fn) {
 	var promise = this;
-	return new AssimilatingPromise(function(resolve) {
+	return new AssimilatingPromise(function(assimilate) {
 		return promise.fork(function() {
-			return resolve(Promise.of(fn.apply(this, arguments)));
+			return assimilate(Promise.of(fn.apply(this, arguments)));
 		}, function() {
-			return resolve(promise);
+			return assimilate(promise);
 		});
 	});
 };
@@ -98,11 +102,11 @@ Promise.prototype.map = function chain(fn) {
 
 Promise.prototype.chain = function chain(fn) {
 	var promise = this;
-	return new AssimilatingPromise(function(resolve) {
+	return new AssimilatingPromise(function(assimilate) {
 		return promise.fork(function() {
-			return resolve(fn.apply(this, arguments));
+			return assimilate(fn.apply(this, arguments));
 		}, function() {
-			return resolve(promise);
+			return assimilate(promise);
 		});
 	})
 };
@@ -122,10 +126,10 @@ Promise.timeout = function(ms, v) {
 
 Promise.all = function(promises) {
 	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
-	return new AssimilatingPromise(function(resolve) {
+	return new AssimilatingPromise(function(assimilate) {
 		var length = promises.length,
 			results = [new Array(length)];
-		return Promise.makeContinuation(promises.map(function(promise, i) {
+		return Promise.joinContinuations(promises.map(function(promise, i) {
 			return promise.fork(function(r) {
 				if (arguments.length == 1)
 					results[0][i] = r;
@@ -136,25 +140,25 @@ Promise.all = function(promises) {
 						results[j][i] = arguments[j];
 					}
 				if (--length == 0)
-					return resolve(new FulfilledPromise(results));
+					return assimilate(new FulfilledPromise(results));
 			}, function() {
-				return resolve(promise);
+				return assimilate(promise);
 			});
-		}).filter(Boolean), []);
+		}).filter(Boolean));
 	});
 };
 
 /*
 Promise.race = function(promises) {
 	return new AssimilatingPromise(function(fulfill, reject) {
-		return Promise.makeContinuation(promises.map(function(promise, i) {
+		return Promise.joinContinuations(promises.map(function(promise, i) {
 			// 	for (var j=0; j<promises.length; j++)
 			// 		if (j != i)
 			// 			promises[j].cancel()
 			function done() {
-				return resolve(promise);
+				return assimilate(promise);
 			}
 			return promise.fork(done, done);
-		}).filter(Boolean), []);
+		}).filter(Boolean));
 	})
 }; */
