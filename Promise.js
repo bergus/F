@@ -1,7 +1,22 @@
-function Promise(opt) {
-	var values, error;
-	var successHandlers = [],
-	    errorHandlers = [];
+function FulfilledPromise(args) {
+	var handlers = [];
+	this.fork = function(onsuccess, onerror) {
+		if (typeof onsuccess == "function")
+			handlers.push(onsuccess);
+		return Promise.makeContinuation(handlers, args);
+	};
+}
+function RejectedPromise(args) {
+	this.fork = function(onsuccess, onerror) {
+		if (typeof onerror == "function")
+			handlers.push(onerror);
+		return Promise.makeContinuation(handlers, args);
+	};
+}
+	
+function AssimilatingPromise(opt) {
+	var resolution = null,
+	    handlers = [];
 	
 	this.fork = function(onsuccess, onerror) {
 	// registers the onsuccess and onerror continuation handlers
@@ -10,34 +25,30 @@ function Promise(opt) {
 	// if the promise is not yet resolved, but there is a continuation waiting to
 	//    do so (and continuatively execute the handlers), that one is returned
 	// else undefined is returned
-		if (!error && typeof onsuccess == "function")
-			successHandlers.push(onsuccess);
-		if (!values && typeof onerror == "function")
-			errorHandlers.push(onerror);
-		/* push them to the handlers arrays and return generic callbacks to prevent multiple executions, instead of just returning
-		   Function.prototype.apply.bind(onsuccess, null, values); or Function.prototype.apply.bind(onerror, null, [error]); respectively */
-		
-		if (values)
-			return Promise.makeContinuation(successHandlers, values);
-		else if (error)
-			return Promise.makeContinuation(errorHandlers, [error]);
-		else
-			return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
+		if (resolution)
+			return resolution.fork(onsuccess, onerror);
+		handlers.push(arguments);
+		return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
 	};
 	
-	var go = opt.call(this, Promise.makeResolver(function fulfill() {
-		if (values || error) return; // throw new Error("cannot fulfill already resolved promise");
-		values = arguments;
-		errorHandlers.length = 0;
-		return Promise.makeContinuation(successHandlers, values);
-	}), Promise.makeResolver(function reject(e) {
-		if (values || error) return; // throw new Error("cannot reject already resolved promise");
-		error = e || new Error(e); // arguments?
-		successHandlers.length = 0;
-		return Promise.makeContinuation(errorHandlers, [error]);
-	}));
+	var go = opt.call(this, function resolve(r) {
+		if (resolution) return;
+		resolution = r;
+		for (var i=0; i<handlers.length; i++)
+			var cont = resolution.fork(handlers[i][0], handlers[i][1]); // assert: cont always gets assigned the same value
+		handlers = null;
+		return cont;
+	});
 	Promise.runAsync(go); // this ensures basic execution of "dependencies"
 }
+
+function Promise(opt) {
+	AssimilatingPromise.call(this, function(resolve) {
+		return opt.call(this, Promise.makeResolver(resolve, FulfilledPromise), Promise.makeResolver(resolve, RejectedPromise));
+	}) 
+}
+
+FulfilledPromise.prototype = RejectedPromise.prototype = AssimilatingPromise.prototype = Promise.prototype;
 
 Promise.run = function run(cont) {
 	// scheduled continuations are not unscheduled. They just might be executed multiple times (but should not do anything twice)
@@ -59,48 +70,48 @@ Promise.makeContinuation = function makeContinuation(handlers, args) {
 		return handlers.shift().apply(null, args);
 	});
 };
-Promise.makeResolver = function makeResolver(r) {
-	// extends a fulfill/reject resolver with methods to actually execute the continuations they might return
+Promise.makeResolver = function makeResolver(resolve, constructor) {
+	// creates a fulfill/reject resolver with methods to actually execute the continuations they might return
+	function r() {
+		return resolve(new constructor(arguments));
+	}
 	r.sync = function() {
-		Promise.run(r.apply(this, arguments));
+		Promise.run(resolve(new constructor(arguments)));
 	};
 	r.async = function() {
-		Promise.runAsync(r.apply(this, arguments)); // this creates the continuation immediately
+		Promise.runAsync(resolve(new constructor(arguments))); // this creates the continuation immediately
 	};
 	return r;
 };
 
 Promise.prototype.map = function chain(fn) {
 	var promise = this;
-	return new Promise(function(fulfill, reject) {
+	return new AssimilatingPromise(function(resolve) {
 		return promise.fork(function() {
-			return fulfill(fn.apply(this, arguments));
-		}, reject);
+			return resolve(Promise.of(fn.apply(this, arguments)));
+		}, function() {
+			return resolve(promise);
+		});
 	});
 };
 // Promise.prototype.mapError respectively
 
 Promise.prototype.chain = function chain(fn) {
 	var promise = this;
-	return new Promise(function(fulfill, reject) {
+	return new AssimilatingPromise(function(resolve) {
 		return promise.fork(function() {
-			return fn.apply(this, arguments).fork(fulfill, reject);
-		}, reject);
+			return resolve(fn.apply(this, arguments));
+		}, function() {
+			return resolve(promise);
+		});
 	})
 };
 
 Promise.of = function() {
-	var args = arguments;
-	return new Promise(function(f) {
-		f.apply(null, args); // assert: === undefined
-	});
+	return new FulfilledPromise(arguments);
 };
-
 Promise.reject = function() {
-	var args = arguments;
-	return new Promise(function(f, r) {
-		r.apply(null, args); // assert: === undefined
-	});
+	return new RejectedPromise(arguments);
 };
 
 Promise.timeout = function(ms, v) {
@@ -111,7 +122,7 @@ Promise.timeout = function(ms, v) {
 
 Promise.all = function(promises) {
 	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
-	return new Promise(function(fulfill, reject) {
+	return new AssimilatingPromise(function(resolve) {
 		var length = promises.length,
 			results = [new Array(length)];
 		return Promise.makeContinuation(promises.map(function(promise, i) {
@@ -125,20 +136,25 @@ Promise.all = function(promises) {
 						results[j][i] = arguments[j];
 					}
 				if (--length == 0)
-					return fulfill.apply(null, results);
-			}, reject);
+					return resolve(new FulfilledPromise(results));
+			}, function() {
+				return resolve(promise);
+			});
 		}).filter(Boolean), []);
 	});
 };
 
 /*
 Promise.race = function(promises) {
-	return new Promise(function(fulfill, reject) {
+	return new AssimilatingPromise(function(fulfill, reject) {
 		return Promise.makeContinuation(promises.map(function(promise, i) {
 			// 	for (var j=0; j<promises.length; j++)
 			// 		if (j != i)
 			// 			promises[j].cancel()
-			return promise.fork(fulfill, reject); // throws!
+			function done() {
+				return resolve(promise);
+			}
+			return promise.fork(done, done);
 		}).filter(Boolean), []);
 	})
 }; */
