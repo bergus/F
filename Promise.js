@@ -3,9 +3,13 @@ function makeResolvedPromiseConstructor(i) {
 		var handlers = [];
 		function runner() {
 			if (!handlers.length) return;
-			while (handlers.length > 1)
-				Promise.run(handlers.shift().apply(null, args)); // "mutually" recursive call to run() in case of multiple handlers
-			return handlers.shift().apply(null, args);
+			var continuations = [];
+			while (handlers.length) {
+				var cont = handlers.shift().apply(null, args);
+				if (typeof cont == "function")
+					continuations.push(cont);
+			}
+			return Promise.joinContinuations(continuations);
 		}
 		this.fork = function(onsuccess, onerror) {
 			var handler = [onsuccess, onerror][i];
@@ -29,8 +33,10 @@ function AssimilatingPromise(opt) {
 	// if the promise is not yet resolved, but there is a continuation waiting to
 	//    do so (and continuatively execute the handlers), that one is returned
 	// else undefined is returned
-		if (resolution)
+		if (resolution) {
+			// if (this instanceof Promise) this.fork = resolution.fork; TODO ???
 			return resolution.fork(onsuccess, onerror);
+		}
 		handlers.push(arguments);
 		return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
 	};
@@ -38,9 +44,12 @@ function AssimilatingPromise(opt) {
 	var go = opt.call(this, function assimilate(r) {
 		if (resolution) return;
 		resolution = r;
+		// that.fork = resolution.fork; TODO ??? Does not necessarily work well if resolution is a pending promise
 		for (var i=0; i<handlers.length; i++)
 			var cont = resolution.fork(handlers[i][0], handlers[i][1]); // assert: cont always gets assigned the same value
 		handlers = null;
+		// if (cont && cont.isScheduled) cont.unSchedule() TODO ??? The result of a chain is usually already
+		//                                                          scheduled, but we are going to execute it
 		return cont;
 	});
 	Promise.runAsync(go); // this ensures basic execution of "dependencies"
@@ -82,6 +91,7 @@ Promise.joinContinuations = function joinContinuations(continuations) {
 	if (continuations.length <= 1) return continuations[0];
 	return function runner() {
 		if (!continuations.length) return;
+		// TODO run in "parallel" to finish the shortest continuation chains first
 		while (continuations.length > 1)
 			Promise.run(continuations.shift()); // "mutually" recursive call to run() in case of multiple continuations
 		return continuations.shift();
