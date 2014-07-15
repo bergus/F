@@ -103,9 +103,34 @@ Promise.reject = function() {
 	});
 };
 
-Promise.timeout = function(ms, v) {
-	return new Promise(function(f) {
-		setTimeout(f.sync.bind(f, v), ms);
+Promise.from = function(v) {
+	if (v instanceof Promise) return v;
+	// TODO: assimilate thenables
+	// TODO: reject errors ???
+	return Promise.of(v);
+}
+
+Promise.prototype.timeout = function(ms, v) {
+	return Promise.timeout(ms, this, v);
+}
+Promise.timeout = function(ms, p, v) {
+	// return Promise.race([p, Promise.defer(ms, new Error("Timed out "+ms+" ms"))]);
+	return new Promise(function(fulfill, reject) {
+		setTimeout(reject.sync.bind(reject, v), ms);
+		return p.fork(fulfill, reject);
+	});
+};
+Promise.prototype.defer = function(ms, v) {
+	var promise = this;
+	return this.chain(function() {
+		return Promise.defer(ms, promise);
+	});
+};
+Promise.defer = function(ms, v) {
+	return new Promise(function(fulfill, reject) {
+		setTimeout(function() {
+			Promise.run(Promise.from(v).fork(fulfill, reject));
+		})
 	});
 };
 
