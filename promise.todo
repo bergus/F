@@ -1,4 +1,17 @@
-﻿/* OPEN ISSUES
+﻿/* Cancellation (https://github.com/promises-aplus/cancellation-spec)
+* .canceled=true property on errors (https://github.com/promises-aplus/cancellation-spec/issues/1#issuecomment-11452893)
+* rejection or not? (https://github.com/promises-aplus/cancellation-spec/issues/1#issuecomment-11624303)
+* .catchCancelation / .handleCancellation
+* CancellationException instanceof Error, .name = 'OperationCancelled', .cancelled = true, .reason & .data (https://github.com/promises-aplus/cancellation-spec/issues/2)
+* .abort() is .cancel() without propagation
+* Cancellation should only need to be considered by the PromiseLibraries/Implementations, the person actually initiating/using cancellation and the person managing the underlying IO operation. (https://github.com/promises-aplus/cancellation-spec/issues/3#issuecomment-11708125)
+* can't decide between cancelled and canceled https://github.com/promises-aplus/cancellation-spec/issues/4
+* .uncancellable() https://github.com/promises-aplus/cancellation-spec/issues/6
+* Returns the rejection reason if the deferred was canceled normally. If the second, optional "strict" argument is true means it will throw an error if the promise is fulfilled. http://dojotoolkit.org/reference-guide/1.10/dojo/Deferred.html#cancel
+* derived = fulfilledPromise.then(function doSomething(){return childPromise}); derived.cancel(); - derived is cancelled and doSomething is executed, but what about childPromise? (https://github.com/promises-aplus/cancellation-spec/issues/7#issuecomment-17761795)
+*/
+
+/* OPEN ISSUES
 * if a promise is already fulfilled, you can add on*-Handlers which will never be called
 	obviously wrong
 ** call handlers when adding them to fulfilled promises? What about restartables then?
