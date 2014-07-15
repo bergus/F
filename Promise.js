@@ -1,14 +1,17 @@
+"use strict";
+
 function makeResolvedPromiseConstructor(i) {
 	return function ResolvedPromise(args) {
 		var handlers = [];
 		function runner() {
 			if (!handlers.length) return;
 			var continuations = [];
-			while (handlers.length) {
-				var cont = handlers.shift().apply(null, args);
+			for (var i=0; i<handlers.length; i++) {
+				var cont = handlers[i].apply(null, args);
 				if (typeof cont == "function")
 					continuations.push(cont);
 			}
+			handlers.length = 0;
 			return Promise.joinContinuations(continuations);
 		}
 		this.fork = function(onsuccess, onerror) {
@@ -86,15 +89,19 @@ Promise.runAsync = function runAsync(cont) {
 	cont.isScheduled = true;
 	setImmediate(Promise.run.bind(Promise, cont));
 };
-
 Promise.joinContinuations = function joinContinuations(continuations) {
 	if (continuations.length <= 1) return continuations[0];
 	return function runner() {
-		if (!continuations.length) return;
-		// TODO run in "parallel" to finish the shortest continuation chains first
-		while (continuations.length > 1)
-			Promise.run(continuations.shift()); // "mutually" recursive call to run() in case of multiple continuations
-		return continuations.shift();
+		var l = continuations.length;
+		if (!l) return;
+		for (var i=0, j=0; i<l; i++) {
+			var cont = continuations[i];
+			cont = cont();
+			if (typeof cont == "function")
+				continuations[j++] = cont;
+		}
+		continuations.length = j;
+		return (j <= 1) ? continuations[0] : runner;
 	};
 };
 
@@ -136,20 +143,25 @@ Promise.timeout = function(ms, v) {
 
 Promise.all = function(promises) {
 	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
+	var length = promises.length;
+	if (!length)
+		return new FulfilledPromise([]);
 	return new AssimilatingPromise(function(assimilate) {
-		var length = promises.length,
-			results = [new Array(length)];
+		var left = length,
+		    results = [new Array(length)],
+		    width = 1;
 		return Promise.joinContinuations(promises.map(function(promise, i) {
 			return promise.fork(function(r) {
-				if (arguments.length == 1)
+				var l = arguments.length;
+				if (l == 1)
 					results[0][i] = r;
-				else
-					for (var j=0; j<arguments.length; j++) {
-						if (results.length <= j)
-							results[j] = [];
+				else {
+					while (width < l)
+						results[width++] = new Array(length);
+					for (var j=0; j<l; j++)
 						results[j][i] = arguments[j];
-					}
-				if (--length == 0)
+				}
+				if (--left == 0)
 					return assimilate(new FulfilledPromise(results));
 			}, function() {
 				return assimilate(promise);
