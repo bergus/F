@@ -11,6 +11,12 @@
 * derived = fulfilledPromise.then(function doSomething(){return childPromise}); derived.cancel(); - derived is cancelled and doSomething is executed, but what about childPromise? (https://github.com/promises-aplus/cancellation-spec/issues/7#issuecomment-17761795)
 */
 
+// test snippet for cancellation:
+var a = Promise.defer(500, "hello").chain(function(x){console.log(x); return Promise.defer(500, "delays");}).map(console.log)
+setTimeout(function(){ a.cancel(); }, 550)
+Promise.run(a.fork(null, function(e) { console.log(e.stacktrace);}))
+
+
 /* OPEN ISSUES
 * if a promise is already fulfilled, you can add on*-Handlers which will never be called
 	obviously wrong
