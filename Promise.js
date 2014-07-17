@@ -27,12 +27,12 @@ function Promise(opt) {
 		else
 			return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
 	};
-	this.send = function(name, message) {
-		// leaks opt, especially opt.call ???
-		if (typeof opt[name] == "function")
-			return opt[name](message);
-		// else
-		//	return opt.send(name, message);
+	this.send = function(name) {
+		if (typeof opt[name] == "function") {
+			var args = Array.prototype.slice.call(arguments, 1);
+			return opt[name].apply(opt, args);
+		} else if (opt.send)
+			return opt.send.apply(opt, arguments);
 	};
 	
 	var go = opt.call(this, Promise.makeResolver(function fulfill() {
@@ -46,6 +46,7 @@ function Promise(opt) {
 		successHandlers.length = 0;
 		return Promise.makeContinuation(errorHandlers, [error]);
 	}));
+	opt.call = null; // prevent it from being called again (by .send), don't leak
 	Promise.runAsync(go); // this ensures basic execution of "dependencies"
 }
 
@@ -99,73 +100,73 @@ Promise.TokenSource = function() {
 		return !cancellationTokens.length;
 	};
 };
-Promise.prototype.getCancellationToken = function(){};
+function CancellationError(message) {
+	var error = new Error(message);
+	error.cancelled = true;
+	return error;
+}
+Promise.prototype.cancel = function(token) {
+	// if (this.isSettled()) return; // TODO???
+	Promise.run(this.send("cancel", token, new CancellationError("cancelled operation"))); // runAsync???
+};
 
 Promise.prototype.map = function chain(fn) {
 	var promise = this;
-	var token,
+	var token = promise.send("getCancellationToken"),
 	    reject,
 	    tokenSource = new Promise.TokenSource();
 	return new Promise({
 		call: function(p, fulfill, r) {
 			reject = r;
-			p.getCancellationToken = tokenSource.get;
 			
-			token = promise.getCancellationToken();
 			return promise.fork(function() {
 				return fulfill(fn.apply(this, arguments));
 			}, reject);
 		},
-		cancel: function(t) {
+		cancel: function(t, error) {
 		// returns the rejection contination, or undefined if the promise was not cancelled
 			if (tokenSource.revoke(t)) {
-				var cont = promise.send("cancel", token);
-				if (cont) return cont;
-				var error = new Error("cancelled operation");
-				error.cancelled = true;
-				return reject(error);
+				return promise.send("cancel", token, error) || reject(error);
 			}
-		}
+		},
+		getCancellationToken: tokenSource.get,
+		send: promise.send
 	});
 };
 // Promise.prototype.mapError respectively
 
 Promise.prototype.chain = function chain(fn) {
 	var promise = this;
-	var token,
+	var token = promise.send("getCancellationToken"),
 	    reject,
 	    tokenSource = new Promise.TokenSource();
 	return new Promise({
 		call: function(p, fulfill, r) {
 			reject = r;
-			p.getCancellationToken = tokenSource.get;
 			
-			token = promise.getCancellationToken();
 			return promise.fork(function() {
 				promise = fn.apply(this, arguments);
-				if (!token) return promise.send("cancel");
+				if (!reject)
+					return promise.send("cancel", new CancellationError("aim already cancelled"));
 				
-				token = promise.getCancellationToken();
+				token = promise.send("getCancellationToken");
 				return promise.fork(fulfill, reject);
 			}, reject);
 		},
-		cancel: function(t) {
+		cancel: function(t, error) {
 		// returns the rejection contination, or undefined if the promise was not cancelled
 			if (tokenSource.revoke(t)) {
-				var cont = promise.send("cancel", token);
-				token = null;
-				if (cont) return cont;
-				var error = new Error("cancelled operation");
-				error.cancelled = true;
-				return reject(error);
+				var cont = promise.send("cancel", token, error) || reject(error);
+				reject = null;
+				return cont;
 			}
+		},
+		getCancellationToken: tokenSource.get,
+		send: function() {
+			// promise is reassigned above
+			return promise.send.apply(promise, arguments);
 		}
 	})
-};
-
-Promise.prototype.cancel = function(token) {
-	// if (this.isSettled()) return; // TODO???
-	Promise.run(this.send("cancel", token)); // runAsync???
 };
 
 Promise.of = function() {
@@ -187,113 +188,146 @@ Promise.from = function(v) {
 	// TODO: assimilate thenables
 	// TODO: reject errors ???
 	return Promise.of(v);
-}
+};
 
 Promise.prototype.timeout = function(ms) {
 	return Promise.timeout(ms, this);
-}
+};
 Promise.timeout = function(ms, p) {
-	return Promise.race([p, Promise.defer(ms, new Error("Timed out "+ms+" ms"))]);
+	return Promise.race([p, Promise.defer(ms).chain(function() {
+		return Promise.reject(new Error("Timed out after "+ms+" ms"));
+	})]);
 };
 Promise.prototype.defer = function(ms) {
 	var promise = this;
+	// a fulfillment will be held up until ms from now
 	return this.chain(function() {
-		return Promise.defer(ms, promise);
+		var args = arguments,
+		    timerId,
+		    tokenSource = new Promise.TokenSource(),
+		    reject;
+		return new Promise({
+			call: function(p, fulfill, r) {
+				reject = r;
+				
+				timerId = setTimeout(function() {
+					timerId = null;
+					Promise.run(fulfill.apply(null, args));
+				}, ms)
+			},
+			cancel: function(t, error) {
+			// returns the rejection contination, or undefined if the promise was not cancelled
+				if (tokenSource.revoke(t)) {
+					if (timerId != null)
+						clearTimeout(timerId);
+					return reject(error);
+				}
+			},
+			getCancellationToken: tokenSource.get,
+			send: promise.send
+		});
 	});
 };
 Promise.defer = function(ms, v) {
-	var promise = Promise.from(v);
-	// both resolutions, even rejections, will be held up until ms from now
-	// unless we cancel the promise. The resolution (even a rejection) will be lost TODO???
-	var timerId,
-	    token,
-	    tokenSource = new Promise.TokenSource(),
-	    reject;
-	return new Promise({
-		call: function(p, fulfill, r) {
-			reject = r;
-			p.getCancellationToken = tokenSource.get;
-			
-			token = promise.getCancellationToken();
-			timerId = setTimeout(function() {
-				timerId = null;
-				Promise.run(promise.fork(fulfill, reject));
-			}, ms)
-		},
-		cancel: function(t) {
-		// returns the rejection contination, or undefined if the promise was not cancelled
-			if (tokenSource.revoke(t)) {
-				var cont = promise.send("cancel", token);
-				if (timerId != null)
-					clearTimeout(timerId);
-				// else
-					// we might want to forward the (and only the???) cancellation error from promise:
-					// var cont2 = promise.fork(null, reject); TODO
-				var error = new Error("cancelled operation");
-				error.cancelled = true;
-				if (cont) return Promise.makeContinuation([cont, reject(error)], []);
-				return reject(error);
-			}
-		}
-	});
+	return Promise.from(v).defer(ms);
 };
 
 Promise.all = function(promises) {
 	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
-	return new Promise(function(fulfill, reject) {
-		var length = promises.length,
-			results = [new Array(length)],
-			tokens = new Array(length);
-		return Promise.makeContinuation(promises.map(function(promise, i) {
-			tokens[i] = promise.getCancellationToken();
-			return promise.fork(function(r) {
-				tokens[i] = null;
-				if (arguments.length == 1)
-					results[0][i] = r;
-				else
-					for (var j=0; j<arguments.length; j++) {
-						if (results.length <= j)
-							results[j] = [];
-						results[j][i] = arguments[j];
-					}
-				if (--length == 0)
-					return fulfill.apply(null, results);
-			}, function() {
-				tokens[i] = null;
-				var continuations = [reject.apply(null, arguments)];
-				for (var j=0; j<length; j++) {
-					if (tokens[j]) {
-						var cont = promises[j].send("cancel", tokens[j]);
-						if (typeof cont == "function")
-							continuations.push(cont);
-					}
-				}
-				return Promise.makeContinuation(continuations, []);
+	var length = promises.length,
+	    tokens = new Array(length),
+	    tokenSource = new Promise.TokenSource();
+	function cancelRest(continuations, error) {
+		for (var j=0; j<length; j++) {
+			if (tokens[j]) {
+				var cont = promises[j].send("cancel", tokens[j], error);
+				if (typeof cont == "function")
+					continuations.push(cont);
+			}
+		}
+		return Promise.makeContinuation(continuations, []);
+	}
+	return new Promise({
+		call: function(p, fulfill, reject) {
+			var results = [new Array(length)];
+			return Promise.makeContinuation(promises.map(function(promise, i) {
+				tokens[i] = promise.send("getCancellationToken");
+				return promise.fork(function(r) {
+					tokens[i] = null;
+					if (arguments.length == 1)
+						results[0][i] = r;
+					else
+						for (var j=0; j<arguments.length; j++) {
+							if (results.length <= j)
+								results[j] = [];
+							results[j][i] = arguments[j];
+						}
+					if (--length == 0)
+						return fulfill.apply(null, results);
+				}, function() {
+					tokens[i] = null;
+					var cont = reject.apply(null, arguments);
+					return cancelRest(cont ? [cont] : [], new CancellationError("aim already rejected"));
+				});
+			}).filter(Boolean), []);
+		},
+		cancel: function(token, error) {
+		// returns the rejection contination, or undefined if the promise was not cancelled
+			if (tokenSource.revoke(token)) {
+				return cancelRest([], error);
+			}
+		},
+		getCancellationToken: tokenSource.get,
+		send: function() {
+			var args = arguments;
+			return promises.map(function(promise) {
+				return promise.send.apply(promise, args);
 			});
-		}).filter(Boolean), []);
+		}
 	});
 };
 
 Promise.race = function(promises) {
-	return new Promise(function(fulfill, reject) {
-		var tokens = new Array(promises.length);
-		return Promise.makeContinuation(promises.map(function(promise, i) {
-			function makeCancellatingResolver(resolve) {
-				return function() {
-					var cont = resolve.apply(null, arguments);
-					var continuations = cont ? [cont] : [];
-					for (var j=0; j<promises.length; j++) {
-						if (j != i) {
-							var cont = promises[j].send("cancel", tokens[j]);
-							if (typeof cont == "function")
-								continuations.push(cont);
-						}
-					}
-					return Promise.makeContinuation(continuations, []);
-				};
+	var length = promises.length,
+	    tokens = new Array(length),
+	    tokenSource = new Promise.TokenSource();
+	function cancelRest(continuations, error) {
+		for (var j=0; j<length; j++) {
+			if (tokens[j]) {
+				var cont = promises[j].send("cancel", tokens[j], error);
+				if (typeof cont == "function")
+					continuations.push(cont);
 			}
-			tokens[i] = promise.getCancellationToken();
-			return promise.fork(makeCancellatingResolver(fulfill), makeCancellatingResolver(reject));
-		}).filter(Boolean), []);
-	})
+		}
+		return Promise.makeContinuation(continuations, []);
+	}
+	return new Promise({
+		call: function(p, fulfill, reject) {
+			var results = [new Array(length)];
+			return Promise.makeContinuation(promises.map(function(promise, i) {
+				tokens[i] = promise.send("getCancellationToken");
+				function makeCancellatingResolver(resolve) {
+					return function() {
+						tokens[i] = null;
+						var cont = resolve.apply(null, arguments);
+						return cancelRest(cont ? [cont] : [], new CancellationError("aim already resolved"));
+					};
+				}
+				return promise.fork(makeCancellatingResolver(fulfill), makeCancellatingResolver(reject));
+			}).filter(Boolean), []);
+		},
+		cancel: function(token, error) {
+		// returns the rejection contination, or undefined if the promise was not cancelled
+			if (tokenSource.revoke(token)) {
+				return cancelRest([], error);
+			}
+		},
+		getCancellationToken: tokenSource.get,
+		send: function() {
+			var args = arguments;
+			return promises.map(function(promise) {
+				return promise.send.apply(promise, args);
+			});
+		}
+	});
 };
