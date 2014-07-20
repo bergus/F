@@ -43,8 +43,8 @@ Promise.run(a.fork(null, function(e) { console.log(e.stacktrace);}))
 * What happens when an error handler handles a CancellationError? Would the error handler be executed, but ignored?
   Would the resulting promise resolve as normal, and could (need to) be cancelled a second time?
   Do CancellationErrors need to be propagated at all, or are the promises in the chain already rejected by the cancellation itself?
-* What happens to a success handler (or its result) on a fulfilled promise that is cancelled before the handler returns?
-	unlikely: the cancellation happens either in the gap between fulfilling the promise and executing the handlers async,
+* What happens to a then handler (or its result) on a resolved promise that is cancelled before the handler returns?
+	unlikely: the cancellation happens either in the gap between resolving the promise and executing the handlers async,
 	          or is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
 	regardless: the handler should be executed, and its result value should be immediately cancelled
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
