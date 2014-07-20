@@ -39,6 +39,16 @@ Promise.run(a.fork(null, function(e) { console.log(e.stacktrace);}))
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
 * .syncThen(function(a, b,c){ return [...no error...]}) == .filter(function([a, b, c]){ return [Array]})
 * var x = new Promise(function(p){return prompt(p);}); x.then(x).start("Endlosschleife!");
+
+* What happens when an error handler handles a CancellationError? Would the error handler be executed, but ignored?
+  Would the resulting promise resolve as normal, and could (need to) be cancelled a second time?
+  Do CancellationErrors need to be propagated at all, or are the promises in the chain already rejected by the cancellation itself?
+* What happens to a success handler (or its result) on a fulfilled promise that is cancelled before the handler returns?
+	unlikely: the cancellation happens either in the gap between fulfilling the promise and executing the handlers async,
+	          or is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
+	regardless: the handler should be executed, and its result value should be immediately cancelled
+* a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
+	no single resolved promise should respond to a `send()` call
 */
 
 /* IDEAS
@@ -68,7 +78,36 @@ Promise.run(a.fork(null, function(e) { console.log(e.stacktrace);}))
   this includes cancellation any async action, with the "simple" `return`syntax for the specific canceller
   only a bit unsure how forked flow works - but it might be an interesting concept for "stop/go":
                                             everyone with access to the line can make it go, or abandon it
+
 */
+
+/* SPEC: Communication
+Rationale: We want to communicate with unresolved promises. Duplex. Interoperable.
+
+We do not care about resolved promises. They represent the result of a task that has been completed.
+Any values that are received by the means of the following methods are supposed to be disposed when the promise is resolved, to prevent memory leaks.
+
+* Progress
+`onprogress` IS [supposed to be] the third argument to a `.then()` call. It MUST (as soon as possible???) be passed as the third argument to any `.then()` call on every pending promise that the resulting promise depends upon.
+These especially include the original promise that `.then()` was called on and the child promises that possible handlers might have returned, but the concept applies to all other promise combinators that a library might offer.
+The value of the `onprogress` parameter MIGHT be a function (and MUST have a `.call()` method???). It SHOULD (must???) never be called after a promise has been resolved (see rationale).
+What values exactly are passed through, and how to interact with them, is not part of this specification; though there is a recommendation for function handlers below.
+OPEN: What happens in case of multiple `then()` calls on one promise? Allow event duplication (with child handler calls), or do we require pass-through of the handlers themselves?
+
+* Send
+Every promise MUST have a `send()` method. When called, it MUST invoke the `.send()` methods on all pending promises that it depends on with the exact same arguments. It MUST `return` the result of such a call, or an array of the results of multiple calls. 
+If a promise is resolved, a `.send()` call SHOULD (must???) be a noop, and MUST `return undefined`.
+The structure of the arguments is not part of this specification, though there is a recommendation below.
+
+* [NOTE] parameters
+Both functions that are passed as `onprogress` handlers, and the `send` methods, serve as event channels between promise creators and consumers.
+The first parameter should be a string with the name of the event, so that different communication purposes can be distinguished, and standards about how to handle specific ones can be devised.
+The second parameter should, in case it is meant as an event object, have the value of the first parameter as its `.name` property.
+OPEN: Should we fix the number of arguments for an efficient implemenation (to 2?), and use arrays when more are necessary?
+A proposal cancellation implemented in terms of that can be found below.
+
+*/
+
 
 
 // 3 Promise-Funktionen sind wichtig und beschreibbar:
