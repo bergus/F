@@ -80,6 +80,8 @@ x.map(console.log);
 [X] the innermost promise resolution doesn't need n function calls until the outermost registered callbacks (console.log)
 FAIL after the promise is resolved, adding a new callback doesn't lead to a stack overflow
 
+=> We don't get a better complexity than O(n), since we need to resolve n promises. However, for multiple handlers, we should be able to balance the load and get better average complexity.
+
 */
 ----
 
@@ -87,3 +89,23 @@ var t1 = Promise.of("1"),
     t2 = Promise.of("2");
 var t3 = t1.map(function(a) { console.log(a); return "3";});
 Promise.all([t1, t2, t3]).map(console.log);
+
+----
+
+/* PROGRESSION
+
+* a third argument to the "normal" Promise constructor, which is a `triggerProgress` function
+* .progressFilterInject((triggerProgress) -> ((progressEvent) -> boolean))
+  .progressFilter(test) { return this.progressFilterInject(Function.const(test)); }
+  .progressMap(fn) { return this.progressFilterInject(function(inject) { return function(event) { inject(fn(event)); return false; }; }); }
+  .thenTrigger(event) { return this.progressFilterInject(function(inject) { this.then(inject.partial(event)); return Fuction.const(true); }); }
+* ProgressPromise(event, Promise): assimilates the promise, fires the progess event immediately (asap, in the continuation)
+  Example: doFirstPart().then(function(r) { return new ProgessPromise("first part done", doSecondPart(r)); }).then(…)
+  Also curried/composable: trigger:: event -> (x -> Promise) -> (x -> ProgressPromise)
+* EventStream interface:
+  - .on() / .onprogess()
+  - .asEventStream()
+  - mapProgressEvents((EventStream) -> EventStream)
+* 
+
+*/
