@@ -1,6 +1,6 @@
 "use strict";
 
-function makeResolvedPromiseConstructor(state) {
+function makeResolvedPromiseConstructor(state, removable) {
 	return function ResolvedPromise(args) {
 		var handlers = [],
 		    that = this;
@@ -8,32 +8,33 @@ function makeResolvedPromiseConstructor(state) {
 			if (!handlers.length) return;
 			var continuations = [];
 			for (var i=0; i<handlers.length; i++) {
-				var cont = handlers[i].apply(null, args);
+				var subscription = handlers[i];
+				if (isCancelled(subscription.token)) continue;
+				var cont = subscription[state]
+				  ? subscription[state].apply(null, args)
+				  : subscription.assimilate(that);
 				if (typeof cont == "function")
 					continuations.push(cont);
 			}
 			handlers.length = 0;
-			return Promise.joinContinuations(continuations);
+			return ContinuationBuilder.join(continuations);
 		}
 		this.fork = function forkResolved(subscription) {
 			// TODO: assimilate depends on .fork() always returning the same runHandlers continuation
 			if (isCancelled(subscription.token)) return runHandlers;
-			var handler = subscription[state],
-			    assimilate = subscription.assimilate;
-			if (typeof handler == "function")
-				handlers.push(handler); // BUG: Forgets about possible future cancellation
-			else if (typeof assimilate)
-				assimilate(that); // TODO: continuation instead of recursive call?
-				                  // assert: assimilate returns nothing or runHandlers (sic!)
-				                  // BUG: Premature assimilation might deprive a promise of proper cancellation???
+			var toHandle = typeof subscription[state] == "function";
+			if (toHandle) subscription.assimilate = null;
+			if (toHandle || typeof subscription.assimilate == "function") {
+				subscription[removable] = null;
+				handlers.push(subscription);
+				// TODO: Are there cases where we can safely (and should) do assimilation in fork()?
+			}
 			return runHandlers;
 		};
-		
-		this.send = function noop() {}; // TODO: better on the prototype?
 	}
 }
-var FulfilledPromise = makeResolvedPromiseConstructor("success");
-var RejectedPromise =  makeResolvedPromiseConstructor("error");
+var FulfilledPromise = makeResolvedPromiseConstructor("success", "error");
+var RejectedPromise =  makeResolvedPromiseConstructor("error", "success");
 	
 function AssimilatingPromise(opt) {
 	var resolution = null,
@@ -102,7 +103,19 @@ Promise.runAsync = function runAsync(cont) {
 	cont.isScheduled = true;
 	setImmediate(Promise.run.bind(Promise, cont));
 };
-Promise.joinContinuations = function joinContinuations(continuations) {
+
+function ContinuationBuilder() {
+	this.continuations = [];
+}
+ContinuationBuilder.prototype.add = function(cont) { 
+	if (typeof cont == "function")
+		this.continuations.push(cont);
+	return this;
+};
+ContinuationBuilder.prototype.get = function() {
+	return ContinuationBuilder.join(this.continuations);
+};
+ContinuationBuilder.join = function joinContinuations(continuations) {
 	if (continuations.length <= 1) return continuations[0];
 	return function runBranches() {
 		var l = continuations.length;
@@ -118,25 +131,20 @@ Promise.joinContinuations = function joinContinuations(continuations) {
 	};
 };
 
-function addCancellationSend(promise, registeredHandlers, token, cancel, send) {
-	if (!token)
-		token = {
-			isCancelled: false,
-			update: function() {
-				for (var i=0, j=0; i<registeredHandlers.length; i++)
-					if (!isCancelled(registeredHandlers[i].token) && j++!=i)
-						registeredHandlers[j] = registeredHandlers[i];
-				registeredHandlers.length = j;
-				if (!j)
-					this.isCancelled = true;
-			}
-		};
-	promise.send = function(msg, error) {
-		if (msg != "cancel") return send && send(arguments);
-		if (typeof token.update == "function") token.update();
-		if (isCancelled(token)) return cancel(error);
+Promise.prototype.send = function noop() {};
+
+function implicitCancellationToken(registeredHandlers) {
+	return {
+		isCancelled: false,
+		update: function() {
+			for (var i=0, j=0; i<registeredHandlers.length; i++)
+				if (!isCancelled(registeredHandlers[i].token) && j++!=i)
+					registeredHandlers[j] = registeredHandlers[i];
+			registeredHandlers.length = j;
+			if (!j)
+				this.isCancelled = true;
+		}
 	};
-	return token;
 }
 function isCancelled(token) {
 	// it is cancelled when token exists, and .isCancelled yields true
@@ -146,14 +154,22 @@ function isCancelled(token) {
 Promise.prototype.map = function map(fn) {
 	var promise = this;
 	return new AssimilatingPromise(function mapResolver(assimilate, registeredHandlers) {
+		var token = implicitCancellationToken(registeredHandlers);
+		this.send = function mapSend(msg, error) {
+			if (msg != "cancel") return promise.send.apply(promise, arguments);
+			token.update();
+			if (isCancelled(token))
+				return new ContinuationBuilder()
+				.add(promise.send(msg, error))
+				.add(assimilate(Promise.reject(error)))
+				.get();
+		};
 		return promise.fork({
 			success: function mapper() {
 				return assimilate(Promise.of(fn.apply(this, arguments)));
 			},
 			assimilate: assimilate,
-			token: addCancellationSend(this, registeredHandlers, null, function cancel(error) {
-				return assimilate(Promise.reject(error));
-			}, Function.prototype.apply.bind(promise.send, promise))
+			token: token
 		});
 	});
 };
@@ -163,21 +179,25 @@ Promise.prototype.chain = function chain(fn, _, token) {
 	var promise = this;
 	return new AssimilatingPromise(function chainResolver(assimilate, registeredHandlers) {
 		var cancellation = null;
-		token = addCancellationSend(this, registeredHandlers, token, function cancel(error) {
-			if (promise)
-				promise.send("cancel", error);
-			else
-				cancellation = error;
-			return assimilate(Promise.reject(error));
-		}, function resend(args) {
-			return promise && promise.send.apply(promise, args);
-		});
+		if (!token) token = implicitCancellationToken(registeredHandlers);
+		this.send = function chainSend(msg, error) {
+			if (msg != "cancel") return promise && promise.send.apply(promise, arguments);
+			if (typeof token.update == "function") token.update();
+			if (isCancelled(token)) {
+				if (!promise)
+					cancellation = error;
+				return new ContinuationBuilder()
+				.add(promise && promise.send(msg, error))
+				.add(assimilate(Promise.reject(error)))
+				.get();
+			}
+		};
 		return promise.fork({
 			success: function chainer() {
 				promise = null;
 				promise = fn.apply(this, arguments);
-				if (cancellation) // the fn() call did cancel us!
-					promise.send("cancel", cancellation);
+				if (cancellation) // the fn() call did cancel us:
+					promise.send("cancel", cancellation); // revenge!
 				return promise.fork({assimilate: assimilate, token: token});
 			},
 			assimilate: assimilate,
@@ -222,7 +242,7 @@ Promise.all = function all(promises) {
 		var left = length,
 		    results = [new Array(length)],
 		    width = 1;
-		return Promise.joinContinuations(promises.map(function continueAll(promise, i) {
+		return ContinuationBuilder.join(promises.map(function continueAll(promise, i) {
 			return promise.fork({
 				success: function allCallback(r) {
 					var l = arguments.length;
@@ -246,7 +266,7 @@ Promise.all = function all(promises) {
 /*
 Promise.race = function race(promises) {
 	return new AssimilatingPromise(function raceResolver(fulfill, reject) {
-		return Promise.joinContinuations(promises.map(function continueRace(promise, i) {
+		return ContinuationBuilder.join(promises.map(function continueRace(promise, i) {
 			// 	for (var j=0; j<promises.length; j++)
 			// 		if (j != i)
 			// 			promises[j].cancel()
