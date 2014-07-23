@@ -104,8 +104,16 @@ Promise.runAsync = function runAsync(cont) {
 	setImmediate(Promise.run.bind(Promise, cont));
 };
 
-function ContinuationBuilder() {
-	this.continuations = [];
+function ContinuationBuilder(continuations) {
+	if (continuations) {
+		// filter out non-function values
+		for (var i=0, j=0; i<continuations.length; i++)
+			if (typeof continuations[i] == "function")
+				continuations[j++] = continuations[i];
+		continuations.length = j;
+		this.continuations = continuations;
+	} else
+		this.continuations = [];
 }
 ContinuationBuilder.prototype.add = function(cont) { 
 	if (typeof cont == "function")
@@ -159,10 +167,10 @@ Promise.prototype.map = function map(fn) {
 			if (msg != "cancel") return promise.send.apply(promise, arguments);
 			token.update();
 			if (isCancelled(token))
-				return new ContinuationBuilder()
-				.add(promise.send(msg, error))
-				.add(assimilate(Promise.reject(error)))
-				.get();
+				return new ContinuationBuilder([
+					promise.send(msg, error),
+					assimilate(Promise.reject(error))
+				]).get();
 		};
 		return promise.fork({
 			success: function mapper() {
@@ -186,10 +194,10 @@ Promise.prototype.chain = function chain(fn, _, token) {
 			if (isCancelled(token)) {
 				if (!promise)
 					cancellation = error;
-				return new ContinuationBuilder()
-				.add(promise && promise.send(msg, error))
-				.add(assimilate(Promise.reject(error)))
-				.get();
+				return new ContinuationBuilder([
+					promise && promise.send(msg, error),
+					assimilate(Promise.reject(error))
+				]).get();
 			}
 		};
 		return promise.fork({
