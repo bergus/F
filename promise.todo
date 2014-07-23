@@ -46,7 +46,7 @@ Promise.until(function(x) { return x > 9 }, function(x) {
 	console.log(x);
 	return Promise.timeout(100, x).chain(function(y) {
 		console.log("timed "+y);
-		return y+1;
+		return Promise.of(y+1);
 	});
 }, 0).map(function(x){console.log(x, "done"); debugger; });
 // which would unfold to something like
@@ -107,5 +107,17 @@ Promise.all([t1, t2, t3]).map(console.log);
   - .asEventStream()
   - mapProgressEvents((EventStream) -> EventStream)
 * 
+
+*/
+
+/* TERMINOLOGY
+
+Extends https://github.com/promises-aplus/promises-spec#terminology
+
+parent: the promise that `then` was called on, from which the `promise` originates
+child: a thenable that a monadic callback returns
+dependencies: all parents and childs on which the fate of a promise depends on
+successors, followers: all promises that depend on a `promise`
+Do not use *descendant*, which is ambiguous. Also, there is no relationship between a parent of a promise and a child of that promise.
 
 */
