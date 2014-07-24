@@ -259,33 +259,25 @@ Promise.timeout = function(ms, p) {
 	})]);
 };
 Promise.prototype.defer = function(ms) {
-	// BUG TODO: implement new style cancellation
+	// a fulfillment will be held up for ms
 	var promise = this;
-	// a fulfillment will be held up until ms from now
 	return this.chain(function() {
-		var args = arguments,
-		    timerId,
-		    tokenSource = new Promise.TokenSource(),
-		    reject;
-		return new Promise({
-			call: function(p, fulfill, r) {
-				reject = r;
-				
-				timerId = setTimeout(function() {
-					timerId = null;
-					Promise.run(fulfill.apply(null, args));
-				}, ms)
-			},
-			cancel: function(t, error) {
-			// returns the rejection contination, or undefined if the promise was not cancelled
-				if (tokenSource.revoke(t)) {
+		// var promise = new FulfilledPromise(arguments);
+		return new AssimilatingPromise(function(assimilate, registeredHandlers) {
+			var token = implicitCancellationToken(registeredHandlers);
+			var timerId = setTimeout(function() {
+				timerId = null;
+				Promise.run(assimilate(promise));
+			}, ms);
+			this.send = function mapSend(msg, error) {
+				if (msg != "cancel") return promise.send.apply(promise, arguments);
+				token.update();
+				if (isCancelled(token)) {
 					if (timerId != null)
 						clearTimeout(timerId);
-					return reject(error);
+					return assimilate(Promise.reject(error));
 				}
-			},
-			getCancellationToken: tokenSource.get,
-			send: promise.send
+			};
 		});
 	});
 };
@@ -294,29 +286,38 @@ Promise.defer = function(ms, v) {
 };
 
 Promise.all = function all(promises) {
-	// BUG TODO: implement new style cancellation
 	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
-	var length = promises.length,
-	    tokens = new Array(length),
-	    tokenSource = new Promise.TokenSource();
-	function cancelRest(continuations, error) {
-		for (var j=0; j<length; j++) {
-			if (tokens[j]) {
-				var cont = promises[j].send("cancel", tokens[j], error);
-				if (typeof cont == "function")
-					continuations.push(cont);
+	return new AssimilatingPromise(function allResolver(assimilate, registeredHandlers) {
+		var length = promises.length,
+		    token = implicitCancellationToken(registeredHandlers),
+		    left = length,
+		    results = [new Array(length)],
+		    tokens = new Array(length),
+		    width = 1;
+		function cancelRest(continuations, error) {
+			for (var j=0; j<length; j++) {
+				if (tokens[j]) {
+					tokens[j].cancelled = true; // revoke
+					continuations.add(promises[j].send("cancel", error));
+				}
 			}
+			return continuations.get();
 		}
-		return ContinuationBuilder.join(continuations);
-	}
-	return new Promise({
-		call: function(p, fulfill, reject) {
-			var left = length,
-			    results = [new Array(length)],
-			    width = 1;
-			return ContinuationBuilder.join(promises.map(function(promise, i) {
-				tokens[i] = promise.send("getCancellationToken");
-				return promise.fork(function(r) {
+		this.send = function allSend(msg, error) {
+			if (msg != "cancel") {
+				var args = arguments;
+				return promises.map(function(promise) {
+					// TODO: exclude already resolved ones?
+					return promise.send.apply(promise, args);
+				});
+			}
+			token.update();
+			if (isCancelled(token))
+				return cancelRest(new ContinuationBuilder(), error);
+		};
+		return new ContinuationBuilder(promises.map(function(promise, i) {
+			return promise.fork({
+				success: function allCallback(r) {
 					tokens[i] = null;
 					var l = arguments.length;
 					if (l == 1)
@@ -328,72 +329,53 @@ Promise.all = function all(promises) {
 							results[j][i] = arguments[j];
 					}
 					if (--left == 0)
-						return fulfill.apply(null, results);
-				}, function() {
+						return assimilate(new FulfilledPromise(results));
+				},
+				assimilate: function(/*promise*/) {
 					tokens[i] = null;
-					var cont = reject.apply(null, arguments);
-					return cancelRest(cont ? [cont] : [], new CancellationError("aim already rejected"));
-				});
-			}).filter(Boolean));
-		},
-		cancel: function(token, error) {
-		// returns the rejection contination, or undefined if the promise was not cancelled
-			if (tokenSource.revoke(token)) {
-				return cancelRest([], error);
-			}
-		},
-		getCancellationToken: tokenSource.get,
-		send: function() {
-			var args = arguments;
-			return promises.map(function(promise) {
-				return promise.send.apply(promise, args);
+					var conts = new ContinuationBuilder().add(assimilate(promise));
+					return cancelRest(conts, new CancellationError("aim already rejected"));
+				},
+				token: tokens[i] = {isCancelled: false} // create new token
 			});
-		}
+		})).get();
 	});
 };
 
 Promise.race = function(promises) {
-	// BUG TODO: implement new style cancellation
-	var length = promises.length,
-	    tokens = new Array(length),
-	    tokenSource = new Promise.TokenSource();
-	function cancelRest(continuations, error) {
-		for (var j=0; j<length; j++) {
-			if (tokens[j]) {
-				var cont = promises[j].send("cancel", tokens[j], error);
-				if (typeof cont == "function")
-					continuations.push(cont);
-			}
-		}
-		return ContinuationBuilder.join(continuations);
-	}
-	return new Promise({
-		call: function(p, fulfill, reject) {
-			var results = [new Array(length)];
-			return ContinuationBuilder.join(promises.map(function(promise, i) {
-				tokens[i] = promise.send("getCancellationToken");
-				function makeCancellatingResolver(resolve) {
-					return function() {
-						tokens[i] = null;
-						var cont = resolve.apply(null, arguments);
-						return cancelRest(cont ? [cont] : [], new CancellationError("aim already resolved"));
-					};
+	return new AssimilatingPromise(function raceResolver(assimilate, registeredHandlers) {
+		var length = promises.length,
+		    token = implicitCancellationToken(registeredHandlers),
+		    tokens = new Array(length);
+		function cancelRest(continuations, error) {
+			for (var j=0; j<length; j++) {
+				if (tokens[j]) {
+					tokens[j].cancelled = true; // revoke
+					continuations.add(promises[j].send("cancel", error));
 				}
-				return promise.fork(makeCancellatingResolver(fulfill), makeCancellatingResolver(reject));
-			}).filter(Boolean));
-		},
-		cancel: function(token, error) {
-		// returns the rejection contination, or undefined if the promise was not cancelled
-			if (tokenSource.revoke(token)) {
-				return cancelRest([], error);
 			}
-		},
-		getCancellationToken: tokenSource.get,
-		send: function() {
-			var args = arguments;
-			return promises.map(function(promise) {
-				return promise.send.apply(promise, args);
-			});
+			return continuations.get();
 		}
+		this.send = function raceSend(msg, error) {
+			if (msg != "cancel") {
+				var args = arguments;
+				return promises.map(function(promise) {
+					return promise.send.apply(promise, args);
+				});
+			}
+			token.update();
+			if (isCancelled(token))
+				return cancelRest(new ContinuationBuilder(), error);
+		};
+		return new ContinuationBuilder(promises.map(function(promise, i) {
+			return promise.fork({
+				assimilate: function raceWinner(/*promise*/) {
+					tokens[i] = null;
+					var conts = new ContinuationBuilder().add(assimilate(promise));
+					return cancelRest(conts, new CancellationError("aim already resolved"));
+				},
+				token: tokens[i] = {isCancelled: false} // create new token
+			});
+		}));
 	});
 };

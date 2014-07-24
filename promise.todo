@@ -14,7 +14,7 @@
 // test snippet for cancellation:
 var a = Promise.defer(500, "hello").chain(function(x){console.log(x); return Promise.defer(500, "delays");}).map(console.log)
 setTimeout(function(){ a.cancel(); }, 550)
-Promise.run(a.fork(null, function(e) { console.log(e.stacktrace);}))
+Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 
 
 /* OPEN ISSUES
@@ -130,7 +130,7 @@ Promise.until = function(cond, fn, value) {
 // (example usage)
 Promise.until(function(x) { return x > 9 }, function(x) {
 	console.log(x);
-	return Promise.timeout(100, x).chain(function(y) {
+	return Promise.defer(100, x).chain(function(y) {
 		console.log("timed "+y);
 		return Promise.of(y+1);
 	});
