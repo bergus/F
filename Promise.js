@@ -67,7 +67,7 @@ function AssimilatingPromise(opt) {
 		handlers = null;
 		// if (cont && cont.isScheduled) cont.unSchedule() TODO ??? The result of a chain is usually already
 		//                                                          scheduled, but we are going to execute it
-		return cont; // TODO: resolved's fork depends on returning no other continuation
+		return cont;
 	}, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
 		// and sets the token state accordingly
@@ -175,31 +175,32 @@ function isCancelled(token) {
 	// it is cancelled when token exists, and .isCancelled yields true
 	return !!token && (token.isCancelled === true || (token.isCancelled !== false && token.isCancelled()));
 }
-
-Promise.prototype.map = function map(fn) {
-	var promise = this;
-	return new AssimilatingPromise(function mapResolver(assimilate, isCancellable) {
-		var token = {isCancelled: false};
-		this.send = function mapSend(msg, error) {
-			if (msg != "cancel") return promise.send.apply(promise, arguments);
-			if (isCancellable(token))
-				return new ContinuationBuilder([
-					promise.send(msg, error),
-					assimilate(Promise.reject(error))
-				]).get();
-		};
-		return promise.fork({
-			success: function mapper() {
+function makeMapping(createSubscription) {
+	return function map(fn) {
+		var promise = this;
+		return new AssimilatingPromise(function mapResolver(assimilate, isCancellable) {
+			var token = {isCancelled: false};
+			this.send = function mapSend(msg, error) {
+				if (msg != "cancel") return promise.send.apply(promise, arguments);
+				if (isCancellable(token))
+					return new ContinuationBuilder([
+						promise.send(msg, error),
+						assimilate(Promise.reject(error))
+					]).get();
+			};
+			return promise.fork(createSubscription({ 
+				assimilate: assimilate,
+				token: token
+			}, function mapper() {
 				return assimilate(Promise.of(fn.apply(this, arguments)));
-			},
-			assimilate: assimilate,
-			token: token
+			}));
 		});
-	});
-};
-// Promise.prototype.mapError respectively
+	};
+}
+Promise.prototype.map      = makeMapping(function(s, m) { s.success = m; return s; }); // Object.set("success")
+Promise.prototype.mapError = makeMapping(function(s, m) { s.error   = m; return s; }); // Object.set("error")
 
-Promise.prototype.chain = function chain(fn, _, explicitToken) {
+Promise.prototype.chain = function chain(onfulfilled, onrejected, explicitToken) {
 	var promise = this;
 	return new AssimilatingPromise(function chainResolver(assimilate, isCancellable) {
 		var cancellation = null;
@@ -215,15 +216,19 @@ Promise.prototype.chain = function chain(fn, _, explicitToken) {
 				]).get();
 			}
 		};
-		return promise.fork({
-			success: function chainer() {
+		function makeChainer(fn) {
+			return function chainer() {
 				promise = null;
 				promise = fn.apply(this, arguments);
 				if (cancellation) // the fn() call did cancel us:
 					return promise.send("cancel", cancellation); // revenge!
 				else
 					return promise.fork({assimilate: assimilate, token: token});
-			},
+			};
+		}
+		return promise.fork({
+			success: onfulfilled && makeChainer(onfulfilled),
+			error: onrejected && makeChainer(onrejected),
 			assimilate: assimilate,
 			token: token
 		});
@@ -277,8 +282,13 @@ Promise.defer = function(ms, v) {
 	return Promise.from(v).defer(ms);
 };
 
-Promise.all = function all(promises) {
-	// if (arguments.length > 1) promise = Array.prototype.concat.apply([], arguments);
+Promise.all = function all(promises, opt) {
+	if (!Array.isArray(promises)) {
+		promises = arguments;
+		opt = 2;
+	}
+	var spread = opt & 2,
+	    notranspose = opt & 1;
 	return new AssimilatingPromise(function allResolver(assimilate, isCancellable) {
 		var length = promises.length,
 		    token = {isCancelled: false},
@@ -308,7 +318,9 @@ Promise.all = function all(promises) {
 				success: function allCallback(r) {
 					waiting[i] = null;
 					var l = arguments.length;
-					if (l == 1)
+					if (notranspose)
+						results[0][i] = arguments;
+					else if (l == 1 || spread)
 						results[0][i] = r;
 					else {
 						while (width < l)
@@ -317,7 +329,7 @@ Promise.all = function all(promises) {
 							results[j][i] = arguments[j];
 					}
 					if (--left == 0)
-						return assimilate(new FulfilledPromise(results));
+						return assimilate(new FulfilledPromise(spread ? results[0] : results));
 				},
 				assimilate: function(/*promise*/) {
 					waiting[i] = null;
