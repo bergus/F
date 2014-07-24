@@ -23,22 +23,21 @@ Promise.run(a.fork(null, function(e) { console.log(e.stacktrace);}))
 ** call handlers when adding them to fulfilled promises? What about restartables then?
 	nothing is restartable
 ** public getState function?
-	needed
+	-> synchronous inspection
 * What happens to a stopped multiple promise, which gets started with a new parameter?
 	save arguments
 * multiple promises getting ended with different types while beeing stopped are not correctly restarted!
-* promises can get ended with different types whiel beeing stopped !!! (used for Stream)
 * conventions for errors: Must be multiple callback?
 * dann-Promises have no chance to receive messages from wenn. Any need for that?
 	no. bubble-up.
 * implement a get(prop) function. ridicoulus approach?
-	tbd
+	-> Functor
 * abort dann in error case / abort sonst in success case ???
 			// wenn.onError(dann.abort) ???
 			// wenn.onSuccess(sonst.abort) ???
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
-* .syncThen(function(a, b,c){ return [...no error...]}) == .filter(function([a, b, c]){ return [Array]})
-* var x = new Promise(function(p){return prompt(p);}); x.then(x).start("Endlosschleife!");
+	-> Composition law of Functors
+* function x(p){return Promise.prompt(p);}); x("").then(x) // Endlosschleife!
 
 * What happens when an error handler handles a CancellationError? Would the error handler be executed, but ignored?
   Would the resulting promise resolve as normal, and could (need to) be cancelled a second time?
@@ -121,65 +120,90 @@ A proposal cancellation implemented in terms of that can be found below.
 // Start-Stop-Konzept ausarbeiten
 // insbesondere bei Verzweigungen nur eigene Zweige anhalten? Implementation im endlichen Automaten?
 
-// Ein bestimmtes Promise ist bereits vorhanden. Was soll darufhin ausgeführt werden?
-// * einfache Funktion - ohne Promise-Rückgabe  => onSuccess, onError, onFinal
-// * synchrone "Filter"-Funktion - neues Promise | unstoppbar
-// * synchroner Filter oder Funktion mit callback - neues Promise | möglichst stoppbar
-// * synchroner Filter oder Rückgabe Promise - neues Promise | möglichst stoppbar
-// * Funktion mit callback - neues Promise | stoppbar ?
-// * weiteres Promise - neues Promise (Chain?) | auf alle Fälle stoppbar
+----
 
-/* TEST SCRIPT FOR STOP-GO PROMISES */
-var ldebug = function(m) { var t = document.getElementById("IO"); t.value += "\n"+m; t.scrollTop = t.scrollHeight-t.clientHeight; };
-
-var f = function f(p, s, e, m) {
- ldebug("getting "+[].join.call(p, ", "));
- var t = Number(p[0])*1000;
- setTimeout(function(){
-  var r = Math.round(Math.random()*p[1]);
-  ldebug("after "+t+"ms successing "+r+" of "+p[1]);  
-  s(r, p[1]);
- }, t);
+// Think of a (naive?) promise loop:
+Promise.until = function(cond, fn, value) {
+	if (cond(value)) return Promise.of(value); // for while: if (!cond(value)) …
+	return fn(value).chain(Promise.until.bind(Promise, cond, fn));
 };
-var p = new Promise(f).then(function endless(p){
- return new Promise(f).then(endless).arg(p);
+// (example usage)
+Promise.until(function(x) { return x > 9 }, function(x) {
+	console.log(x);
+	return Promise.timeout(100, x).chain(function(y) {
+		console.log("timed "+y);
+		return Promise.of(y+1);
+	});
+}, 0).map(function(x){console.log(x, "done"); debugger; });
+// which would unfold to something like
+var x= Promise.of(0).chain(function(x) {
+ return Promise.of(1).chain(function(x) {
+  return Promise.of(2).chain(function(x) {
+   return Promise.of(3).chain(function(x) {
+    return Promise.of(4).chain(function(x) {
+     return Promise.of(5).chain(function(x) {
+      return Promise.of(6).chain(function(x) {
+       return Promise.of(7).chain(function(x) {
+        return Promise.of(8).chain(function(x) {
+         return Promise.of(9);
+        });
+       });
+      });
+     });
+    });
+   });
+  });
+ });
 });
-p.onFinal(function(a, b){
- ldebug("after "+a+" seconds returning "+b);
-});
-var s = p.start(5, 10);
-var time = setTimeout(function x(){
- ldebug(s.name || s);
- s = s();
- time = setTimeout(x, 4*1000);
-}, 4*1000);
-setTimeout(function(){
- p.stop(); clearTimeout(time);
- p.abort();
- ldebug(p);
-}, 50*1000);
-return "";
+x.map(console.log);
 
-/* TEST SCRIPT FOR toString */
-function nothing(){}
-return "" + new Promise(nothing).then(nothing).cache(nothing).then(new Promise(nothing).then(nothing)).syncThen(nothing);
+/* How can we deal with this efficiently?
+[X] above unfolded `chain` call can execute all callbacks synchronously
+[ ] when executing `chain` callbacks, don't have them schedule their continuations
+[?] the innermost promise resolution needs to resolve n promises
+[X] when resolving the innermost promise, prevent a stack overflow
+[?] the innermost promise resolution doesn't execute n callbacks
+[X] the innermost promise resolution doesn't need n function calls until the outermost registered callbacks (console.log)
+FAIL after the promise is resolved, adding a new callback doesn't lead to a stack overflow
 
-/* TEST SNIPPET FOR simple Promise */
-return new Promise(function(p,s){window.setTimeout(function(){s("Hallo Welt");}, 500);});
+=> We don't get a better complexity than O(n), since we need to resolve n promises. However, for multiple handlers, we should be able to balance the load and get better average complexity.
 
-/* TEST SNIPPET FOR updatable Promise */
-return new Promise(function(p,s){var i=0;window.setInterval(function(){s("Hallo Welt "+ ++i)}, 500);}, {updatable:true});
+*/
+----
 
-/* TEST SNIPPET FOR multiple Promise */
-var i=0, x = new Promise(function(p,s){
- window.setTimeout(function(){s("Hallo Welt "+ ++i)}, 500);
-}, {updatable:true, starts:"multiple"});
-x.onSuccess(function(){x.start();});
-return x;
+var t1 = Promise.of("1"),
+    t2 = Promise.of("2");
+var t3 = t1.map(function(a) { console.log(a); return "3";});
+Promise.all([t1, t2, t3]).map(console.log);
 
-/* TEST SNIPPET FOR simple Stream */
-return new Promise.Stream(function(p,s){
- var i=0;
- var t=window.setInterval(function(){s("Hallo Welt "+ ++i)}, 500);
- window.setTimeout(function(){window.clearInterval(t);s();},5000);
-});
+----
+
+/* PROGRESSION
+
+* a third argument to the "normal" Promise constructor, which is a `triggerProgress` function
+* .progressFilterInject((triggerProgress) -> ((progressEvent) -> boolean))
+  .progressFilter(test) { return this.progressFilterInject(Function.const(test)); }
+  .progressMap(fn) { return this.progressFilterInject(function(inject) { return function(event) { inject(fn(event)); return false; }; }); }
+  .thenTrigger(event) { return this.progressFilterInject(function(inject) { this.then(inject.partial(event)); return Fuction.const(true); }); }
+* ProgressPromise(event, Promise): assimilates the promise, fires the progess event immediately (asap, in the continuation)
+  Example: doFirstPart().then(function(r) { return new ProgessPromise("first part done", doSecondPart(r)); }).then(…)
+  Also curried/composable: trigger:: event -> (x -> Promise) -> (x -> ProgressPromise)
+* EventStream interface:
+  - .on() / .onprogess()
+  - .asEventStream()
+  - mapProgressEvents((EventStream) -> EventStream)
+* 
+
+*/
+
+/* TERMINOLOGY
+
+Extends https://github.com/promises-aplus/promises-spec#terminology
+
+parent: the promise that `then` was called on, from which the `promise` originates
+child: a thenable that a monadic callback returns
+dependencies: all parents and childs on which the fate of a promise depends on
+successors, followers: all promises that depend on a `promise`
+Do not use *descendant*, which is ambiguous. Also, there is no relationship between a parent of a promise and a child of that promise.
+
+*/
