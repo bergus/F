@@ -133,6 +133,7 @@ Problems (and suggested solutions)
   	return o;
   }
   though "dispose" might use send() actually
+* Interoperability with http://www.w3.org/TR/streams-api/. Also need for a namespace.
  
 * How is the outside world representated? Isn't there a circular event stream?
 			`run :: (EventStream a -> ValueStream (IO b) | EventStream b) -> output (O b, I a) -> IO b`
