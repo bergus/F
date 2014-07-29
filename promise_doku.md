@@ -31,3 +31,19 @@ Notice that the spreads could (but should not) also be achieved using
 | Promise.all([Promise.of(a1, b1, c1), Promise.of(a2, b2, c2), Promise.of(a3, b3, c3)], 2)     .then((a1, a2, a3) => )
 
 ### `Promise.race` ###
+
+
+### `Promise.resolve` ###
+`Promise.resolve` tries make a promise from its arguments by applying the A+/ES6 `[[resolve]]` algorithm.  
+This means it always returns a new promise, and it will assimilate passed thenable recursively. Notice that `Promise` instances constructed by this library stay nested.
+
+```
+Promise.resolve("yeah").map(console.log) // yeah
+Promise.resolve({…}).map(console.log) // {…}
+Promise.resolve({then: function(cb){cb("yeah")}}).map(console.log) // yeah
+Promise.resolve(Promise.of("yeah")).map(console.log) // yeah
+Promise.resolve(Promise.reject(new Error("oh noes"))).mapError(console.log) // Error: oh noes
+Promise.resolve({get then(){throw new Error("oh noes")}}).mapError(console.log) // Error: oh noes
+Promise.resolve({then: function(){throw new Error("oh noes")}}).mapError(console.log) // Error: oh noes
+Promise.resolve({then: function(_, cb){cb(new Error("oh noes"))}}).mapError(console.log) // Error: oh noes
+```

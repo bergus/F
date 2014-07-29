@@ -40,7 +40,8 @@ var RejectedPromise =  makeResolvedPromiseConstructor("error", "success");
 	
 function AssimilatingPromise(opt) {
 	var resolution = null,
-	    handlers = [];
+	    handlers = [],
+	    that = this;
 	
 	this.fork = function forkAssimilating(subscription) {
 	// registers the onsuccess and onerror continuation handlers
@@ -60,6 +61,7 @@ function AssimilatingPromise(opt) {
 	
 	var go = opt.call(this, function assimilate(r) {
 		if (resolution) return; // throw new Error("cannot assimilate different promises");
+		if (r == that) throw new TypeError("Promise::constructor.assimilate: cannot assimilate itself");
 		resolution = r;
 		// that.fork = resolution.fork; TODO ??? Does not necessarily work well if resolution is a pending promise
 		for (var i=0; i<handlers.length; i++)
@@ -101,6 +103,7 @@ function Promise(opt) {
 			};
 			return resolve;
 		}
+		// TODO: make a resolver that also accepts promises, not only plain fulfillment values
 		return opt.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise));
 	}) 
 }
@@ -235,19 +238,56 @@ Promise.prototype.chain = function chain(onfulfilled, onrejected, explicitToken)
 	})
 };
 
-Promise.of = function of() {
+Promise.of = Promise.fulfill = function of() {
 	return new FulfilledPromise(arguments);
 };
 Promise.reject = function reject() {
 	return new RejectedPromise(arguments);
 };
 
-Promise.from = function(v) {
+Promise.resolve = function resolve(v) {
+	// like Promise.cast/from, but also does recursive unwrapping for thenables, and always returns a new promise
+	if (Object(v) !== v)
+		return new FulfilledPromise(arguments); // resolve primitive values
+	if (v instanceof Promise)
+		return v.chain(); // a new Promise assimilating v
+	try {
+		var then = v.then;
+	} catch(e) {
+		return Promise.reject(e);
+	}
+	if (typeof then != "function")
+		return new FulfilledPromise(arguments); // resolve non-thenable objects
+	return new Promise(function(fulfill, reject) {
+		try {
+			then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
+		} catch(e) {
+			reject.async(e); // TODO: Ignores exception if already resolved
+		}
+	}).chain(Promise.resolve); // recursively
+};
+
+Promise.from = Promise.cast = function from(v) {
+	// wraps non-promises, assimilates thenables (non Promise/A+ conformant, though)
 	if (v instanceof Promise) return v;
-	// TODO: assimilate thenables
-	// TODO: reject errors ???
+	if (Object(v) === v && typeof v.then == "function")
+		return new Promise(function(fulfill, reject) {
+			v.then(fulfill.async, reject.async); // TODO: support progression and cancellation
+		});
+	// TODO: reject if v instanceof Error ???
 	return Promise.of(v);
 };
+
+Promise.method = function wrapPromise(fn) {
+	// wrap a possibly-synchronous function to return a promise
+	return function promisingMethod() {
+		try {
+			return Promise.from(fn.apply(this, arguments))
+		} catch(e) {
+			return Promise.reject(e);
+		}
+	};
+}
 
 Promise.prototype.timeout = function(ms) {
 	return Promise.timeout(ms, this);

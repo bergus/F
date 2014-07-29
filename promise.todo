@@ -48,6 +48,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 	regardless: the handler should be executed, and its result value should be immediately cancelled
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
 	no single resolved promise should respond to a `send()` call
+* a cancel attempt message tries to cancel already cancelled promises again
 */
 
 /* IDEAS
