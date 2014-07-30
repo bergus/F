@@ -73,6 +73,8 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   likely to be interesting are stack traces from the creation of Promise objects, not the about the many callbacks that were executed
 * bind message to Promise.run from which async action the continuations are ran, and where the call to this task was issued
 * a PendingPromise constructor that eats all handlers (for breakfast)
+* a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
+* a Lazy (subclassing?) constructor that will wait for a "run" message, or just wraps its resolver in an async continuation
 * asynchronous continuations (probably not a so good idea):
   every line of control flow is run by its own, async runner (that keeps track of the "stack")
   this includes cancellation any async action, with the "simple" `return`syntax for the specific canceller

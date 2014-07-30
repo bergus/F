@@ -247,7 +247,7 @@ Promise.reject = function reject() {
 };
 
 Promise.from = Promise.cast = function from(v) {
-	// wraps non-promises, assimilates thenables (non Promise/A+ conformant, though)
+	// wraps non-promises, assimilates thenables (non Promise/A+ conformant, though, see Promise.resolve for that)
 	if (v instanceof Promise) return v;
 	if (Object(v) === v && typeof v.then == "function")
 		return new Promise(function(fulfill, reject) {
@@ -403,6 +403,7 @@ function makeThenHandler(fn) {
 		return null;
 	}
 	return function thenHandler() {
+		// get a value from the fn, and apply https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
 		try {
 			var v = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
 			if (v instanceof Promise) return v; // A+ 2.3.2 "If x is a promise, adopt its state"
@@ -412,32 +413,21 @@ function makeThenHandler(fn) {
 		} catch(e) {
 			return Promise.reject(e); // A+ 2.2.7.2, 2.3.3.2 "if […] throws an exception e, reject with e as the reason."
 		}
-		return fromThenable(v, then);
-	}
+		if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
+			return Promise.of(v);
+		return new Promise(function thenableResolver(fulfill, reject) {
+			try {
+				// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
+				then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
+			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
+				reject.async(e); "reject  promise  with  e  as the reason (unless already resolved)"
+			}
+		}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
+	};
 }
-function fromThenable(v, then) {
-	if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
-		return Promise.of(v);
-	return new Promise(function thenableResolver(fulfill, reject) {
-		try {
-			// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
-			then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
-		} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
-			reject.async(e); "reject  promise  with  e  as the reason (unless already resolved)"
-		}
-	}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
-}
-Promise.resolve = function resolve(v) {
-	// like Promise.cast/from, but also does recursive unwrapping for thenables, and always returns a new promise
-	// https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
-	if (Object(v) !== v)
-		return new FulfilledPromise(arguments); // resolve primitive values
-	if (v instanceof Promise)
+Promise.resolve = makeThenHandler(function getResolveValue(v) {
+	// like Promise.cast/from, but also does recursive unwrapping for thenables, and always returns a new promise 
+	if (v instanceof Promise) // not exactly an identity function:
 		return v.chain(); // a new Promise assimilating v
-	try {
-		var then = v.then;
-	} catch(e) {
-		return Promise.reject(e);
-	}
-	return fromThenable(v, then);
-};
+	return v;
+});
