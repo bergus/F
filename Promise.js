@@ -62,6 +62,7 @@ function AssimilatingPromise(opt) {
 	var go = opt.call(this, function assimilate(r) {
 		if (resolution) return; // throw new Error("cannot assimilate different promises");
 		if (r == that) throw new TypeError("Promise::constructor.assimilate: cannot assimilate itself");
+		// TODO: BUG: Instead of throwing, A+ 2.3.1 requests rejection
 		resolution = r;
 		// that.fork = resolution.fork; TODO ??? Does not necessarily work well if resolution is a pending promise
 		for (var i=0; i<handlers.length; i++)
@@ -245,28 +246,6 @@ Promise.reject = function reject() {
 	return new RejectedPromise(arguments);
 };
 
-Promise.resolve = function resolve(v) {
-	// like Promise.cast/from, but also does recursive unwrapping for thenables, and always returns a new promise
-	if (Object(v) !== v)
-		return new FulfilledPromise(arguments); // resolve primitive values
-	if (v instanceof Promise)
-		return v.chain(); // a new Promise assimilating v
-	try {
-		var then = v.then;
-	} catch(e) {
-		return Promise.reject(e);
-	}
-	if (typeof then != "function")
-		return new FulfilledPromise(arguments); // resolve non-thenable objects
-	return new Promise(function(fulfill, reject) {
-		try {
-			then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
-		} catch(e) {
-			reject.async(e); // TODO: Ignores exception if already resolved
-		}
-	}).chain(Promise.resolve); // recursively
-};
-
 Promise.from = Promise.cast = function from(v) {
 	// wraps non-promises, assimilates thenables (non Promise/A+ conformant, though)
 	if (v instanceof Promise) return v;
@@ -413,4 +392,52 @@ Promise.race = function(promises) {
 			});
 		}));
 	});
+};
+
+Promise.prototype.then = function(onfulfilled, onrejected, onprogress, token) {
+	return this.chain(makeThenHandler(onfulfilled), makeThenHandler(onrejected), onprogress, token);
+};
+function makeThenHandler(fn) {
+	if (typeof fn != "function") {
+		if (fn != null) console.warn("Promise::then: You must pass a function callback or null");
+		return null;
+	}
+	return function thenHandler() {
+		try {
+			var v = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
+			if (v instanceof Promise) return v; // A+ 2.3.2 "If x is a promise, adopt its state"
+			// if (v === undefined) console.warn("Promise::then: callback did not return a result value")
+			if (Object(v) !== v) return Promise.of(v); // A+ 2.3.4 "If x is not an object or function, fulfill promise with x."
+			var then = v.then; // A+ 2.3.3.1 (Note: "avoid multiple accesses to the .then property")
+		} catch(e) {
+			return Promise.reject(e); // A+ 2.2.7.2, 2.3.3.2 "if […] throws an exception e, reject with e as the reason."
+		}
+		return fromThenable(v, then);
+	}
+}
+function fromThenable(v, then) {
+	if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
+		return Promise.of(v);
+	return new Promise(function thenableResolver(fulfill, reject) {
+		try {
+			// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
+			then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
+		} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
+			reject.async(e); "reject  promise  with  e  as the reason (unless already resolved)"
+		}
+	}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
+}
+Promise.resolve = function resolve(v) {
+	// like Promise.cast/from, but also does recursive unwrapping for thenables, and always returns a new promise
+	// https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
+	if (Object(v) !== v)
+		return new FulfilledPromise(arguments); // resolve primitive values
+	if (v instanceof Promise)
+		return v.chain(); // a new Promise assimilating v
+	try {
+		var then = v.then;
+	} catch(e) {
+		return Promise.reject(e);
+	}
+	return fromThenable(v, then);
 };
