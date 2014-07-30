@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+
+		<title>test</title>
+		<meta name="description" content="Testing Scripts locally" />
+		<meta name="author" content="Bergi" />
+		
+		<script src="../Function.js"></script>
+		<script src="../Object.js"></script>
+		<script src="../Array.js"></script>
+		<script src="../String.js"></script>
+		<script src="../Number.js"></script>
+		
+		<script src="Promise.js"></script>
+		
+		<script type="text/javascript" id="shim">
+			if (!this.setImmediate)
+				this.setImmediatefunction = function setImmediate(fn) { setTimeout(fn, 0); };
+		</script>
+	</head>
+
+	<body>
+		<h1>Fire up the console and go ahead!</h1>
+		<form id="loader">
+			<p>Also load the following script:</p>
+			<label>Filename: <input type="text" name="name" value="" /></label>
+			<button type="submit">Load!</button>
+		</form>
+		<script type="text/javascript">
+			(function() {
+				"use strict";
+				var l = document.getElementById("loader"),
+					b = l.lastElementChild;
+				l.onsubmit = function(e) {
+					e.preventDefault();
+					var s = document.head.appendChild(document.createElement('script')); 
+					s.src = l.elements.name.value+'.js';
+					s.onload = function() { b.textContent = "Reload!"; };
+					b.textContent = "…";
+				};
+			})();
+		</script>
+	</body>
+</html>
