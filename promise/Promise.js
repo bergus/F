@@ -431,3 +431,6 @@ Promise.resolve = makeThenHandler(function getResolveValue(v) {
 		return v.chain(); // a new Promise assimilating v
 	return v;
 });
+
+if (module && module.exports)
+	module.exports = Promise;

@@ -1,0 +1,23 @@
+{
+	"name": "F-promise",
+	"version": "0.1.0",
+	"description": "full-fledged Functional Promises library",
+	"keywords": ["promise", "promises", "promises-aplus", "deferred", "future", "flow control", "functional", "fantasy-land", "fantasyland", "continuation"],
+	"author": "Bergus",
+	"homepage": "https://github.com/bergus/F/promise",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/bergus/F.git"
+	},
+	"bugs": {
+		"url": "http://github.com/bergus/F/issues"
+	},
+	"scripts": {
+		"test": "promises-aplus-tests aplus-adapter.js"
+	},
+	"main": "Promise.js",
+	"devDependencies": {
+		"promises-aplus-tests": "*"
+	},
+	"dependencies": {}
+}
