@@ -62,7 +62,6 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   But that's probably a bad idea anyway, given that the offending continuation might just get re-executed by this
 * unhandled rejections: issue a warning in the handler-runner of rejected promises in case there are no handlers
 * In the runner(s): prevent endless loops - they don't overflow the stack!
-  TODO BUG: Prevent self-resolving promises, and possibly even mutually-dependent ones
 * In the runner(s): keep a list of the continuations that ran in the loop
   and make it available (to unhandled warnings, or `then` stacktraces) for debugging purposes
   however I am a little unsure how to get information about user code involved in it
@@ -70,7 +69,9 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * bind message to Promise.run from which async action the continuations are ran, and where the call to this task was issued
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
+  TODO: Prevent circles in the dependency chain, reject promises that depend on themselves
 * a Lazy (subclassing?) constructor that will wait for a "run" message, or just wraps its resolver in an async continuation
+  deferring the resolver into a continuation (will be returned from .fork() and might be ignored) can help with https://github.com/promises-aplus/promises-spec/issues/128
 * asynchronous continuations (probably not a so good idea):
   every line of control flow is run by its own, async runner (that keeps track of the "stack")
   this includes cancellation any async action, with the "simple" `return`syntax for the specific canceller
@@ -157,7 +158,7 @@ var x= Promise.of(0).chain(function(x) {
 x.map(console.log);
 
 /* How can we deal with this efficiently?
-[X] above unfolded `chain` call can execute all callbacks synchronously
+[X] above unfolded `chain` call can execute all callbacks synchronously (in the same turn)
 [ ] when executing `chain` callbacks, don't have them schedule their continuations
 [?] the innermost promise resolution needs to resolve n promises
 [X] when resolving the innermost promise, prevent a stack overflow
