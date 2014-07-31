@@ -20,7 +20,7 @@ function makeResolvedPromiseConstructor(state, removable) {
 			return ContinuationBuilder.join(continuations);
 		}
 		this.fork = function forkResolved(subscription) {
-			// TODO: adopt depends on .fork() always returning the same runHandlers continuation
+			// TODO: adopt and assimilateDependency depends on .fork() always returning the same runHandlers continuation
 			if (isCancelled(subscription.token)) return runHandlers;
 			var toHandle = typeof subscription[state] == "function";
 			if (toHandle) subscription.proceed = null;
@@ -75,6 +75,7 @@ function AdoptingPromise(opt) {
 		//                                                          scheduled, but we are going to execute it
 		return cont;
 	}
+	this.send = opt.send; // .bind(opt) ???
 	var go = opt.call(this, adopt, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
 		// and sets the token state accordingly
@@ -87,8 +88,6 @@ function AdoptingPromise(opt) {
 		handlers.length = j;
 		return token.isCancelled = !j;
 	});
-	if (opt.send)
-		this.send = opt.send; // .bind(opt) ???
 	
 	Promise.runAsync(go); // this ensures basic execution of "dependencies"
 }
@@ -113,16 +112,71 @@ function Promise(opt) {
 	}) 
 }
 
-/* function DependingPromise(opt) {
+function DependingPromise(opt) {
 // a promise that can assimilate another one, from then on forwarding everything except tokenless handlers, but is still cancellable on its own
-	AdoptingPromise.call(this, function dependingResolver(adopt, isCancellable) {
-		return opt.call(this, function assimilateDependency(p) {
-			return p.fork({proceed: adopt}); // TODO: cancel adoption with a token?
-		}, isCancellable)
-	});
-} */
+	if (Object(opt.token) == opt.token)
+		return AdoptingPromise.call(this, function dependingResolver(adopt, isCancellable) {
+			return opt.call(this, function assimilateDependency(p) {
+				return p.fork({proceed: adopt, token: opt.token});
+			}, isCancellable)
+		});
+	var dependency = null,
+	    handlers = [],
+	    registeredTokens = [],
+	    associatedToken = {isCancelled: false},
+	    that = this;
+	
+	this.fork = function forkDepending(subscription) {
+		if (subscription.proceed == assimilateDependency) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
+			return assimilateDependency(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
+		if (dependency) {
+			if (subscription.token) {
+				registeredTokens.push(subscription.token);
+			} else if (!associatedToken.isCancelled) {
+				subscription.token = associatedToken;
+				handlers.push(subscription);
+			}
+			dependency.fork(subscription); // just forward!
+		} else {
+			handlers.push(subscription);
+		}
+		return go;
+	};
+	this.send = opt.send;
+	function isCancellable() {
+		return associatedToken.isCancelled || (associatedToken.isCancelled = registeredTokens.every(isCancelled));
+	}
+	function assimilateDependency(p) {
+		if (dependency) return;
+		if (p == that) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
+			p = Promise.reject(new TypeError("Promise|assimilateDependency: not going to wait to assimilate itself")); // "reject promise with a TypeError as the reason"
+		dependency = p;
+		for (var i=0, j=0; i<handlers.length; i++) {
+			var cont = dependency.fork(handlers[i]); // assert: cont always gets assigned the same value
+			// filter out those that came without a token
+			if (handlers[i].token == associatedToken)
+				handlers[j] = handlers[i];
+		}
+		handlers.length = j;
+		that.send = function(msg, error) {
+			if (msg != "cancel") return dependency.send.apply(dependency, arguments);
+			if (isCancellable()) {
+				that.send = Promise.prototype.send;
+				dependency = Promise.reject(error);
+				for (var i=0; i<handlers.length; i++) { // those that had no (now cancelled) token 
+					handlers[i] = {success: handlers[i].success, error:handlers[i].error, proceed:handlers[i].proceed}; // without token
+					var cont = dependency.fork(handlers[i]); // assert: cont always gets assigned the same value
+				}
+				return cont;
+			}
+		};
+		return cont;
+	}
+	var go = opt.call(this, assimilateDependency, isCancellable, associatedToken);
+	Promise.runAsync(go); // this ensures basic execution of "dependencies"
+}
 
-FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype /*= DependingPromise.prototype */= Promise.prototype;
+FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype = DependingPromise.prototype = Promise.prototype;
 
 Promise.run = function run(cont) {
 	// scheduled continuations are not unscheduled. They just might be executed multiple times (but should not do anything twice)
@@ -222,36 +276,38 @@ Promise.prototype.mapError = makeMapping(function(m, s) { s.error   = m; return 
 
 Promise.prototype.chain = function chain(onfulfilled, onrejected, explicitToken) {
 	var promise = this;
-	return new AdoptingPromise(function chainResolver(adopt, isCancellable) {
-		var cancellation = null;
-		var token = explicitToken || {isCancelled: false};
-		this.send = function chainSend(msg, error) {
-			if (msg != "cancel") return promise && promise.send.apply(promise, arguments);
-			if (explicitToken ? isCancelled(explicitToken) : isCancellable(token)) {
-				if (!promise) // there currently is no dependency, store for later
-					cancellation = error; // new CancellationError("aim already cancelled") ???
-				return new ContinuationBuilder([
-					promise && promise.send(msg, error),
-					adopt(Promise.reject(error))
-				]).get();
-			}
-		};
-		function makeChainer(fn) {
-			return function chainer() {
-				promise = null;
-				promise = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
-				if (cancellation) // the fn() call did cancel us:
-					return promise.send("cancel", cancellation); // revenge!
-				else
-					return promise.fork({proceed: adopt, token: token});
+	return new DependingPromise({
+		call: function chainResolver(p, assimilate, isCancellable, token) {
+			var cancellation = null;
+			p.send = function chainSend(msg, error) {
+				if (msg != "cancel") return promise && promise.send.apply(promise, arguments);
+				if (explicitToken ? isCancelled(explicitToken) : isCancellable(token)) {
+					if (!promise) // there currently is no dependency, store for later
+						cancellation = error; // new CancellationError("aim already cancelled") ???
+					return new ContinuationBuilder([
+						promise && promise.send(msg, error),
+						assimilate(Promise.reject(error))
+					]).get();
+				}
 			};
-		}
-		return promise.fork({
-			success: onfulfilled && makeChainer(onfulfilled),
-			error: onrejected && makeChainer(onrejected),
-			proceed: adopt,
-			token: token
-		});
+			function makeChainer(fn) {
+				return function chainer() {
+					promise = null;
+					promise = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
+					if (cancellation) // the fn() call did cancel us:
+						return promise.send("cancel", cancellation); // revenge!
+					else
+						return assimilate(promise);
+				};
+			}
+			return promise.fork({
+				success: onfulfilled && makeChainer(onfulfilled),
+				error: onrejected && makeChainer(onrejected),
+				proceed: assimilate,
+				token: token
+			});
+		},
+		token: explicitToken
 	});
 };
 
