@@ -26,15 +26,11 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 	-> synchronous inspection
 * What happens to a stopped multiple promise, which gets started with a new parameter?
 	save arguments
-* multiple promises getting ended with different types while beeing stopped are not correctly restarted!
 * conventions for errors: Must be multiple callback?
 * dann-Promises have no chance to receive messages from wenn. Any need for that?
 	no. bubble-up.
 * implement a get(prop) function. ridicoulus approach?
 	-> Functor
-* abort dann in error case / abort sonst in success case ???
-			// wenn.onError(dann.abort) ???
-			// wenn.onSuccess(sonst.abort) ???
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
 	-> Composition law of Functors
 * function x(p){return Promise.prompt(p);}); x("").then(x) // Endlosschleife!

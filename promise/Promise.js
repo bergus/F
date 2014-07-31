@@ -226,7 +226,7 @@ Promise.prototype.chain = function chain(onfulfilled, onrejected, explicitToken)
 		function makeChainer(fn) {
 			return function chainer() {
 				promise = null;
-				promise = fn.apply(this, arguments);
+				promise = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
 				if (cancellation) // the fn() call did cancel us:
 					return promise.send("cancel", cancellation); // revenge!
 				else
@@ -249,27 +249,49 @@ Promise.reject = function reject() {
 	return new RejectedPromise(arguments);
 };
 
-Promise.from = Promise.cast = function from(v) {
-	// wraps non-promises, assimilates thenables (non Promise/A+ conformant, though, see Promise.resolve for that)
-	if (v instanceof Promise) return v;
-	if (Object(v) === v && typeof v.then == "function")
-		return new Promise(function(fulfill, reject) {
-			v.then(fulfill.async, reject.async); // TODO: support progression and cancellation
-		});
-	// TODO: reject if v instanceof Error ???
-	return Promise.of(v);
+Promise.method = function makeThenHandler(fn, warn) {
+	// return a function that executes fn safely (catching thrown exceptions),
+	// and applies the A+ promise resolution procedure on the result
+	if (typeof fn != "function") {
+		if (warn && fn != null) console.warn(warn + ": You must pass a function callback or null, instead of", fn);
+		return null;
+	}
+	return function thenableResolvingHandler() {
+		// get a value from the fn, and apply https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
+		try {
+			var v = fn.apply(this, arguments);
+			if (v instanceof Promise) return v; // A+ 2.3.2 "If x is a promise, adopt its state"
+			// if (v === undefined) console.warn("Promise::then: callback did not return a result value")
+			if (Object(v) !== v) return Promise.of(v); // A+ 2.3.4 "If x is not an object or function, fulfill promise with x."
+			var then = v.then; // A+ 2.3.3.1 (Note: "avoid multiple accesses to the .then property")
+		} catch(e) {
+			return Promise.reject(e); // A+ 2.2.7.2, 2.3.3.2 "if […] throws an exception e, reject with e as the reason."
+		}
+		if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
+			return Promise.of(v);
+		return new Promise(function thenableResolver(fulfill, reject) {
+			try {
+				// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
+				then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
+			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
+				reject.async(e); "reject promise with e as the 	reason (unless already resolved)"
+			}
+		}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
+	};
 };
 
-Promise.method = function wrapPromise(fn) {
-	// wrap a possibly-synchronous function to return a promise
-	return function promisingMethod() {
-		try {
-			return Promise.from(fn.apply(this, arguments))
-		} catch(e) {
-			return Promise.reject(e);
-		}
-	};
-}
+// wraps non-promises, assimilates thenables (recursively), returns passed Promises directly
+Promise.from = Promise.cast = Promise.method(function identity(v) { return v; });
+
+// like Promise.cast/from, but always returns a new promise
+Promise.resolve = Promise.method(function getResolveValue(v) {
+	if (v instanceof Promise) return v.chain(); // a new Promise (assimilating v)
+	return v;
+});
+
+Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, token) {
+	return this.chain(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), onprogress, token);
+};
 
 Promise.prototype.timeout = function(ms) {
 	return Promise.timeout(ms, this);
@@ -396,44 +418,6 @@ Promise.race = function(promises) {
 		}));
 	});
 };
-
-Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, token) {
-	return this.chain(makeThenHandler(onfulfilled), makeThenHandler(onrejected), onprogress, token);
-};
-function makeThenHandler(fn) {
-	if (typeof fn != "function") {
-		if (fn != null) console.warn("Promise::then: You must pass a function callback or null, instead of", fn);
-		return null;
-	}
-	return function thenHandler() {
-		// get a value from the fn, and apply https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
-		try {
-			var v = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
-			// if (v instanceof Promise) return v; // A+ 2.3.2 "If x is a promise, adopt its state"
-			// if (v === undefined) console.warn("Promise::then: callback did not return a result value")
-			if (Object(v) !== v) return Promise.of(v); // A+ 2.3.4 "If x is not an object or function, fulfill promise with x."
-			var then = v.then; // A+ 2.3.3.1 (Note: "avoid multiple accesses to the .then property")
-		} catch(e) {
-			return Promise.reject(e); // A+ 2.2.7.2, 2.3.3.2 "if […] throws an exception e, reject with e as the reason."
-		}
-		if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
-			return Promise.of(v);
-		return new Promise(function thenableResolver(fulfill, reject) {
-			try {
-				// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
-				then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
-			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
-				reject.async(e); "reject promise with e as the 	reason (unless already resolved)"
-			}
-		}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
-	};
-}
-Promise.resolve = makeThenHandler(function getResolveValue(v) {
-	// like Promise.cast/from, but also does recursive unwrapping for thenables, and always returns a new promise 
-	// if (v instanceof Promise) // not exactly an identity function:
-	//	return v.chain(); // a new Promise assimilating v
-	return v;
-});
 
 if (typeof module == "object" && module.exports)
 	module.exports = Promise;

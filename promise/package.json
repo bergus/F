@@ -4,7 +4,7 @@
 	"description": "full-fledged Functional Promises library",
 	"keywords": ["promise", "promises", "promises-aplus", "deferred", "future", "flow control", "functional", "fantasy-land", "fantasyland", "continuation"],
 	"author": "Bergus",
-	"homepage": "https://github.com/bergus/F/promise",
+	"homepage": "https://github.com/bergus/F/tree/master/promise",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/bergus/F.git"
