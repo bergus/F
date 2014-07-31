@@ -119,7 +119,10 @@ Promise.run = function run(cont) {
 Promise.runAsync = function runAsync(cont) {
 	if (typeof cont != "function" || cont.isScheduled) return;
 	cont.isScheduled = true;
-	setImmediate(Promise.run.bind(Promise, cont));
+	setImmediate(function asyncRun() {
+		cont.isScheduled = false;
+		Promise.run(cont);
+	});
 };
 
 function ContinuationBuilder(continuations) {

@@ -49,24 +49,6 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
 	no single resolved promise should respond to a `send()` call
 * a cancel attempt message tries to cancel already cancelled promises again
-* BUG: Promise.resolve with deferred thenable:
-    Promise.resolve({
-        then: function (resolvePromise) {
-            console.log("setting timeout");
-            setTimeout(function(){
-                console.log("assimilate thenable");
-                var p = Promise.resolve({
-                    then: function (onFulfilled, onRejected) {
-                        console.log("rejecting thenable");
-                        onRejected("uh oh");
-                    }
-                })
-                p.fork({error: function(){ debugger }}) // when this is executed, p does not seem to have other subscriptions!
-                console.log("resolving promise:", p);
-                resolvePromise(p)
-            }, 10);
-        }
-    }).then(console.log, console.error) // stays pending
 */
 
 /* IDEAS
