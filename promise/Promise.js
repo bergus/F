@@ -13,15 +13,14 @@ function makeResolvedPromiseConstructor(state, removable) {
 				var cont = subscription[state]
 				  ? subscription[state].apply(null, args)
 				  : subscription.proceed(that);
-				if (typeof cont == "function")
+				if (typeof cont == "function" && cont != runHandlers)
 					continuations.push(cont);
 			}
 			handlers.length = 0;
 			return ContinuationBuilder.join(continuations);
 		}
 		this.fork = function forkResolved(subscription) {
-			// TODO: adopt and assimilateDependency depends on .fork() always returning the same runHandlers continuation
-			if (isCancelled(subscription.token)) return runHandlers;
+			if (isCancelled(subscription.token)) return;
 			var toHandle = typeof subscription[state] == "function";
 			if (toHandle) subscription.proceed = null;
 			if (toHandle || typeof subscription.proceed == "function") {
@@ -29,9 +28,9 @@ function makeResolvedPromiseConstructor(state, removable) {
 				// push them to the handlers arrays and return a generic callback to prevent multiple executions,
 				// instead of just returning Function.prototype.apply.bind(handler, null, args);
 				handlers.push(subscription);
+				return runHandlers;
 				// TODO: Are there cases where we can safely (and should) do adoption in fork()? Are there cases where we can't?
 			}
-			return runHandlers;
 		};
 	}
 }
@@ -68,14 +67,13 @@ function AdoptingPromise(opt) {
 		if (resolution) return; // throw new Error("cannot adopt different promises");
 		resolution = r;
 		that.fork = resolution.fork; // shortcut unnecessary calls, collect garbage methods
-		for (var i=0; i<handlers.length; i++)
-			var cont = resolution.fork(handlers[i]); // assert: cont always gets assigned the same value
+		that.send = resolution.send;
+		var cont = new ContinuationBuilder().forkMany(resolution, handlers).get();
 		handlers = null;
 		// if (cont && cont.isScheduled) cont.unSchedule() TODO ??? The result of a chain is usually already
 		//                                                          scheduled, but we are going to execute it
 		return cont;
 	}
-	this.send = opt.send; // .bind(opt) ???
 	var go = opt.call(this, adopt, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
 		// and sets the token state accordingly
@@ -127,6 +125,7 @@ function DependingPromise(opt) {
 		this.fork = function forkDepending(subscription) {
 			if (subscription.proceed == assimilateDependency) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 				return assimilateDependency(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
+				// TODO: Still cancellable when already rejected?
 			if (subscription.token) {
 				registeredTokens.push(subscription.token);
 				if (dependency) // BUG: handlers without a token are called out of registration order
@@ -136,24 +135,22 @@ function DependingPromise(opt) {
 			} else {
 				forkAdopted.call(this, subscription);
 			}
-			return go;
+			return go; // TODO BUG: return all those fork() continuations?
 		};
 		function assimilateDependency(p) {
 			if (dependency) return;
 			if (p == that) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
-				p = Promise.reject(new TypeError("Promise|assimilateDependency: not going to wait to assimilate itself")); // "reject promise with a TypeError as the reason"
+				p = Promise.reject(new TypeError("Promise|assimilateDependency: not going to assimilate itself")); // "reject promise with a TypeError as the reason"
 			dependency = p;
-			for (var i=0, j=0; i<handlers.length; i++)
-				var cont = dependency.fork(handlers[i]); // assert: cont always gets assigned the same value
+			handlers.push({proceed:adopt, token:associatedToken});
+			var cont = new ContinuationBuilder().forkMany(dependency, handlers).get();
 			handlers = null;
 			that.send = function(msg, error) {
 				if (msg != "cancel") return dependency.send.apply(dependency, arguments);
-				if (isCancellable()) {
-					that.send = Promise.prototype.send;
+				if (isCancellable())
 					return adopt(dependency = Promise.reject(error));
-				}
 			};
-			return new ContinuationBuilder([cont, dependency.fork({proceed: adopt})]).get();
+			return cont;
 		}
 		var go = opt.call(this, assimilateDependency, isCancellable, associatedToken);
 		return go;
@@ -187,12 +184,22 @@ function ContinuationBuilder(continuations) {
 	} else
 		this.continuations = [];
 }
-ContinuationBuilder.prototype.add = function(cont) { 
+ContinuationBuilder.prototype.add = function add(cont) {
 	if (typeof cont == "function")
 		this.continuations.push(cont);
 	return this;
 };
-ContinuationBuilder.prototype.get = function() {
+ContinuationBuilder.prototype.forkMany = function forkMany(promise, handlers) {
+	for (var cont, i=0; i<handlers.length;)
+		if (cont = promise.fork(handlers[i++])) // increment i even when breaking
+			break;
+	this.add(cont);
+	for (var c; i<handlers.length; i++)
+		if ((c = promise.fork(handlers[i])) != cont)
+			this.add(c);
+	return this;
+};
+ContinuationBuilder.prototype.get = function get() {
 	return ContinuationBuilder.join(this.continuations);
 };
 ContinuationBuilder.join = function joinContinuations(continuations) {

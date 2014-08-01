@@ -70,6 +70,9 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
   TODO: Prevent circles in the dependency chain, reject promises that depend on themselves
+  	var x = a.chain(function(){ return x.*inner chain*});
+  	var x = a.chain(function(){ return x}).*outer chain*;
+  bonus: work with combinators like .map() in the chain
 * a Lazy (subclassing?) constructor that will wait for a "run" message, or just wraps its resolver in an async continuation
   deferring the resolver into a continuation (will be returned from .fork() and might be ignored) can help with https://github.com/promises-aplus/promises-spec/issues/128
 * asynchronous continuations (probably not a so good idea):
