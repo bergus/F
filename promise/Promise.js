@@ -114,66 +114,50 @@ function Promise(opt) {
 
 function DependingPromise(opt) {
 // a promise that can assimilate another one, from then on forwarding everything except tokenless handlers, but is still cancellable on its own
-	if (Object(opt.token) == opt.token)
-		return AdoptingPromise.call(this, function dependingResolver(adopt, isCancellable) {
-			return opt.call(this, function assimilateDependency(p) {
-				return p.fork({proceed: adopt, token: opt.token});
-			}, isCancellable)
-		});
 	var dependency = null,
 	    handlers = [],
 	    registeredTokens = [],
 	    associatedToken = {isCancelled: false},
 	    that = this;
-	
-	this.fork = function forkDepending(subscription) {
-		if (subscription.proceed == assimilateDependency) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
-			return assimilateDependency(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
-		if (dependency) {
-			if (subscription.token) {
-				registeredTokens.push(subscription.token);
-			} else if (!associatedToken.isCancelled) {
-				subscription.token = associatedToken;
-				handlers.push(subscription);
-			}
-			dependency.fork(subscription); // just forward!
-		} else {
-			handlers.push(subscription);
-		}
-		return go;
-	};
-	this.send = opt.send;
 	function isCancellable() {
 		return associatedToken.isCancelled || (associatedToken.isCancelled = registeredTokens.every(isCancelled));
 	}
-	function assimilateDependency(p) {
-		if (dependency) return;
-		if (p == that) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
-			p = Promise.reject(new TypeError("Promise|assimilateDependency: not going to wait to assimilate itself")); // "reject promise with a TypeError as the reason"
-		dependency = p;
-		for (var i=0, j=0; i<handlers.length; i++) {
-			var cont = dependency.fork(handlers[i]); // assert: cont always gets assigned the same value
-			// filter out those that came without a token
-			if (handlers[i].token == associatedToken)
-				handlers[j] = handlers[i];
-		}
-		handlers.length = j;
-		that.send = function(msg, error) {
-			if (msg != "cancel") return dependency.send.apply(dependency, arguments);
-			if (isCancellable()) {
-				that.send = Promise.prototype.send;
-				dependency = Promise.reject(error);
-				for (var i=0; i<handlers.length; i++) { // those that had no (now cancelled) token 
-					handlers[i] = {success: handlers[i].success, error:handlers[i].error, proceed:handlers[i].proceed}; // without token
-					var cont = dependency.fork(handlers[i]); // assert: cont always gets assigned the same value
-				}
-				return cont;
+	AdoptingPromise.call(this, function dependingResolver(adopt) {
+		var forkAdopted = this.fork;
+		this.fork = function forkDepending(subscription) {
+			if (subscription.proceed == assimilateDependency) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
+				return assimilateDependency(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
+			if (subscription.token) {
+				registeredTokens.push(subscription.token);
+				if (dependency) // BUG: handlers without a token are called out of registration order
+					dependency.fork(subscription); // just forward!
+				else
+					handlers.push(subscription);
+			} else {
+				forkAdopted.call(this, subscription);
 			}
+			return go;
 		};
-		return cont;
-	}
-	var go = opt.call(this, assimilateDependency, isCancellable, associatedToken);
-	Promise.runAsync(go); // this ensures basic execution of "dependencies"
+		function assimilateDependency(p) {
+			if (dependency) return;
+			if (p == that) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
+				p = Promise.reject(new TypeError("Promise|assimilateDependency: not going to wait to assimilate itself")); // "reject promise with a TypeError as the reason"
+			dependency = p;
+			for (var i=0, j=0; i<handlers.length; i++)
+				var cont = dependency.fork(handlers[i]); // assert: cont always gets assigned the same value
+			handlers = null;
+			that.send = function(msg, error) {
+				if (msg != "cancel") return dependency.send.apply(dependency, arguments);
+				if (isCancellable()) {
+					that.send = Promise.prototype.send;
+					return adopt(dependency = Promise.reject(error));
+				}
+			};
+			return new ContinuationBuilder([cont, dependency.fork({proceed: adopt})]).get();
+		}
+		var go = opt.call(this, assimilateDependency, isCancellable, associatedToken);
+		return go;
+	});
 }
 
 FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype = DependingPromise.prototype = Promise.prototype;
