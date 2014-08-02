@@ -113,16 +113,7 @@ function Promise(opt) {
 	}) 
 }
 
-/* function DependingPromise(opt) {
-// a promise that can assimilate another one, from then on forwarding everything except tokenless handlers, but is still cancellable on its own
-	AdoptingPromise.call(this, function dependingResolver(adopt, isCancellable) {
-		return opt.call(this, function assimilateDependency(p) {
-			return p.fork({proceed: adopt}); // TODO: cancel adoption with a token?
-		}, isCancellable)
-	});
-} */
-
-FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype /*= DependingPromise.prototype */= Promise.prototype;
+FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype = Promise.prototype;
 
 Promise.run = function run(cont) {
 	// scheduled continuations are not unscheduled. They just might be executed multiple times (but should not do anything twice)

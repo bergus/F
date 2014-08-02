@@ -45,6 +45,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
 	no single resolved promise should respond to a `send()` call
 * a cancel attempt message tries to cancel already cancelled promises again
+* a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
 */
 
 /* IDEAS
@@ -70,13 +71,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
   TODO: Prevent circles in the dependency chain, reject promises that depend on themselves
-* a Lazy (subclassing?) constructor that will wait for a "run" message, or just wraps its resolver in an async continuation
-  deferring the resolver into a continuation (will be returned from .fork() and might be ignored) can help with https://github.com/promises-aplus/promises-spec/issues/128
-* asynchronous continuations (probably not a so good idea):
-  every line of control flow is run by its own, async runner (that keeps track of the "stack")
-  this includes cancellation any async action, with the "simple" `return`syntax for the specific canceller
-  only a bit unsure how forked flow works - but it might be an interesting concept for "stop/go":
-                                            everyone with access to the line can make it go, or abandon it
+
 
 */
 
@@ -167,6 +162,7 @@ x.map(console.log);
 FAIL after the promise is resolved, adding a new callback doesn't lead to a stack overflow
 
 => We don't get a better complexity than O(n), since we need to resolve n promises. However, for multiple handlers, we should be able to balance the load and get better average complexity.
+=> We do not want to get O(n²) runtime where each involved promise uses a subscription with O(n) complexity
 
 */
 ----
