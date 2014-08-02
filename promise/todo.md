@@ -62,6 +62,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   But that's probably a bad idea anyway, given that the offending continuation might just get re-executed by this
 * unhandled rejections: issue a warning in the handler-runner of rejected promises in case there are no handlers
 * In the runner(s): prevent endless loops - they don't overflow the stack!
+  [X] done for ResolvedPromise|runHandlers
 * In the runner(s): keep a list of the continuations that ran in the loop
   and make it available (to unhandled warnings, or `then` stacktraces) for debugging purposes
   however I am a little unsure how to get information about user code involved in it

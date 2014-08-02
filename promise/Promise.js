@@ -7,16 +7,20 @@ function makeResolvedPromiseConstructor(state, removable) {
 		function runHandlers() {
 			if (!handlers.length) return;
 			var continuations = [];
-			for (var i=0; i<handlers.length; i++) {
-				var subscription = handlers[i];
-				if (isCancelled(subscription.token)) continue;
+			for (var i=0; i<handlers.length;) {
+				var subscription = handlers[i++];
+				if (i == handlers.length) // when looking at the last subscription
+					i = handlers.length = 0; // clear the handlers array even before executing, to prevent building an adoption stack
+					                        // alternatively do subscription = handlers.shift() TODO performance test
+				if (isCancelled(subscription.token))
+					continue;
 				var cont = subscription[state]
 				  ? subscription[state].apply(null, args)
 				  : subscription.proceed(that);
 				if (typeof cont == "function" && cont != runHandlers)
 					continuations.push(cont);
 			}
-			handlers.length = 0;
+			// assert: handlers.length == 0
 			return ContinuationBuilder.join(continuations);
 		}
 		this.fork = function forkResolved(subscription) {
@@ -29,7 +33,8 @@ function makeResolvedPromiseConstructor(state, removable) {
 				// instead of just returning Function.prototype.apply.bind(handler, null, args);
 				handlers.push(subscription);
 				return runHandlers;
-				// TODO: Are there cases where we can safely (and should) do adoption in fork()? Are there cases where we can't?
+				// TODO: Are there cases where we can (and should) safely (without overflowing the stack) do adoption in fork()?
+				//       Maybe return a dedicated adopt() continuation (instead of runHandlers)?
 			}
 		};
 	}
@@ -121,7 +126,8 @@ function DependingPromise(opt) {
 		return associatedToken.isCancelled || (associatedToken.isCancelled = registeredTokens.every(isCancelled));
 	}
 	AdoptingPromise.call(this, function dependingResolver(adopt) {
-		var forkAdopted = this.fork;
+		var forkAdopted = this.fork,
+		    go;
 		this.fork = function forkDepending(subscription) {
 			if (subscription.proceed == assimilateDependency) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 				return assimilateDependency(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
@@ -129,13 +135,13 @@ function DependingPromise(opt) {
 			if (subscription.token) {
 				registeredTokens.push(subscription.token);
 				if (dependency) // BUG: handlers without a token are called out of registration order
-					dependency.fork(subscription); // just forward!
+					return dependency.fork(subscription); // just forward!
 				else
 					handlers.push(subscription);
 			} else {
-				forkAdopted.call(this, subscription);
+				return forkAdopted.call(this, subscription); // returns go anyway
 			}
-			return go; // TODO BUG: return all those fork() continuations?
+			return go;
 		};
 		function assimilateDependency(p) {
 			if (dependency) return;
@@ -152,8 +158,7 @@ function DependingPromise(opt) {
 			};
 			return cont;
 		}
-		var go = opt.call(this, assimilateDependency, isCancellable, associatedToken);
-		return go;
+		return go = opt.call(this, assimilateDependency, isCancellable, associatedToken);
 	});
 }
 
@@ -190,13 +195,15 @@ ContinuationBuilder.prototype.add = function add(cont) {
 	return this;
 };
 ContinuationBuilder.prototype.forkMany = function forkMany(promise, handlers) {
-	for (var cont, i=0; i<handlers.length;)
-		if (cont = promise.fork(handlers[i++])) // increment i even when breaking
+	for (var cont, i=0; i<handlers.length; i++) {
+		if (cont = promise.fork(handlers[i])) {
+			this.add(cont);
+			for (var c; ++i<handlers.length;)
+				if ((c = promise.fork(handlers[i])) != cont)
+					this.add(cont = c);
 			break;
-	this.add(cont);
-	for (var c; i<handlers.length; i++)
-		if ((c = promise.fork(handlers[i])) != cont)
-			this.add(c);
+		}
+	}
 	return this;
 };
 ContinuationBuilder.prototype.get = function get() {
