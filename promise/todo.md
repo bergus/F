@@ -18,11 +18,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 
 
 /* OPEN ISSUES
-* if a promise is already fulfilled, you can add on*-Handlers which will never be called
-	obviously wrong
-** call handlers when adding them to fulfilled promises? What about restartables then?
-	nothing is restartable
-** public getState function?
+* public getState function?
 	-> synchronous inspection
 * What happens to a stopped multiple promise, which gets started with a new parameter?
 	save arguments
@@ -39,13 +35,14 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   Would the resulting promise resolve as normal, and could (need to) be cancelled a second time?
   Do CancellationErrors need to be propagated at all, or are the promises in the chain already rejected by the cancellation itself?
 * What happens to a then handler (or its result) on a resolved promise that is cancelled before the handler returns?
-	unlikely: the cancellation happens either in the gap between resolving the promise and executing the handlers async,
-	          or is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
-	regardless: the handler should be executed, and its result value should be immediately cancelled
+	unlikely: the cancellation is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
+	-> A handler that is cancelled before it could get executed is no more executed, even it the promise is resolved.
+	-> If the handler did result a promise, that will be immediately cancelled
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
 	no single resolved promise should respond to a `send()` call
 * a cancel attempt message tries to cancel already cancelled promises again
 * a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
+	-> by default, all methods are lazy now; execution needs to be forced by fork()ing and (async)run()ning that continuation. Also `.then` requires strictness.
 */
 
 /* IDEAS

@@ -21,7 +21,6 @@ function makeResolvedPromiseConstructor(state, removable) {
 			return ContinuationBuilder.join(continuations);
 		} */
 		this.fork = function forkResolved(subscription) {
-			// TODO: adopt depends on .fork() always returning the same runHandlers continuation
 			if (isCancelled(subscription.token)) return;
 			var toHandle = typeof subscription[state] == "function",
 			    toProceed = typeof subscription.proceed == "function";
@@ -64,9 +63,10 @@ function AdoptingPromise(opt) {
 	//    do so (and continuatively execute the handlers), that one is returned
 	// else undefined is returned
 		if (resolution) {
-			// if (this instanceof Promise) this.fork = resolution.fork; TODO ???
-			// if (this.fork == forkAdopting) this.fork = resolution.fork; better ???
-			return resolution.fork(subscription);
+			var cont = resolution.fork(subscription);
+			if (this instanceof Promise && this.fork == forkAdopting)
+				this.fork = resolution.fork; // should've been done in the adoption already
+			return cont;
 		}
 		if (subscription.proceed == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			return adopt(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
@@ -145,7 +145,6 @@ function Promise(opt) {
 FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype = Promise.prototype;
 
 Promise.run = function run(cont) {
-	// scheduled continuations are not unscheduled. They just might be executed multiple times (but should not do anything twice)
 	while (typeof cont == "function")
 		cont = cont(); // assert: a continuation does not throw
 };
@@ -210,7 +209,7 @@ ContinuationBuilder.join = function joinContinuations(continuations) {
 Promise.prototype.send = function noop() {};
 
 Promise.prototype.cancel = function cancel(reason, token) {
-	// TODO: assert:  promise  is still pending. Return false otherwise.
+	// TODO: assert: promise  is still pending. Return false otherwise.
 	if (!(reason && reason instanceof Error && reason.cancelled===true))
 		reason = new CancellationError(reason || "cancelled operation");
 	if (token)
