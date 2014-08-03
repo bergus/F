@@ -32,7 +32,7 @@ function makeResolvedPromiseConstructor(state, removable) {
 				// return a generic callback to prevent multiple executions,
 				// instead of just returning Function.prototype.apply.bind(handler, null, args);
 				return function runHandler() {
-					// if (!subscription) throw new Error("unsafe continuation");
+					if (!subscription) return; // throw new Error("unsafe continuation");
 					if (isCancelled(subscription.token)) return;
 					var handler = subscription[state];
 					subscription = null;
@@ -53,7 +53,6 @@ function AdoptingPromise(opt) {
 // since it is no more cancellable once settled on a certain promise, that one is typically a resolved one 
 	var resolution = null,
 	    handlers = [],
-	    tokens = [],
 	    that = this;
 	
 	this.fork = function forkAdopting(subscription) {
@@ -71,47 +70,56 @@ function AdoptingPromise(opt) {
 		}
 		if (subscription.proceed == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			return adopt(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
-		if (subscription.token)
-			tokens.push(subscription.token);
-		return function advanceAdopted() {
+		handlers.push(subscription);
+		return function advanceSubscription() {
 			if (subscription) {
-				handlers.push(subscription);
+				if (subscription.lazy)
+					return subscription.lazy();
+				else
+					subscription.lazy = false;
 				subscription = null;
-			} else throw new Error("unsafe continuation");
-			return go; // go (the continuation of the opt.call) might be returned (and then called) multiple times!
+			} // else throw new Error("unsafe continuation");
+			return go;
 		}
 	};
 	function adopt(r) {
 		if (resolution) return; // throw new Error("cannot adopt different promises");
 		resolution = r;
 		that.fork = resolution.fork; // shortcut unnecessary calls, collect garbage methods
-		var cont = new ContinuationBuilder().each(handlers, resolution.fork); // TODO: better create a single runHandlers continuation?
+		var conts = new ContinuationBuilder();
+		for (var i=0; i<handlers.length; i++) {
+			var subscription = handlers[i];
+			var c = resolution.fork(subscription);
+			if (subscription.lazy === false)
+				conts.add(c); // TODO: better create a single runHandlers continuation?
+			else subscription.lazy = c;
+		}
 		handlers = null;
-		// go = undefined;
-		return cont.get();
+		// advanceAdopting = go; TODO: Unwrap the go continuation once it got here
+		return conts.get();
 	}
 	var go = opt.call(this, adopt, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
 		// and sets the token state accordingly
 		if (token.isCancelled) return true;
 		if (!handlers) return token.isCancelled = true; // TODO: Is it acceptable to revoke the associated token after a promise has been resolved?
-		return token.isCancelled = tokens.every(isCancelled);
-		/* remove cancelled subscriptions (whose token has been revoked)
-		TODO: also remove cancelled tokens
+		// remove cancelled subscriptions (whose token has been revoked)
 		for (var i=0, j=0; i<handlers.length; i++)
 			if (!isCancelled(handlers[i].token) && j++!=i)
 				handlers[j] = handlers[i];
 		handlers.length = j;
-		return token.isCancelled = !j; */
+		return token.isCancelled = !j;
 	});
-	// TODO: wrap go() in a safe continuation
-	/* go = function() {
-		var next = cont();
-		if (next == cont) // consider it being a threadsafe one
-			return next;
-		else
-			return go;
-	 } */
+	/* wrap go() in a safe continuation
+	TODO: without creating a non-constant number of unncessary stackframes
+	function advanceAdopting() {
+		if (typeof go != "function") return advanceAdopting = undefined;
+		var next = go(); // the continuation of the opt.call must not be called multiple times
+		if (next == go) // consider it being a self-returning threadsafe one
+			return advanceAdopting = next;
+		go = next;
+		return advanceAdopting;
+	}; */
 }
 
 function Promise(opt) {
@@ -143,12 +151,19 @@ Promise.run = function run(cont) {
 };
 Promise.runAsync = function runAsync(cont) {
 	if (typeof cont != "function" || cont.isScheduled) return cont;
-	cont.isScheduled = true;
-	setImmediate(function asyncRun() {
-		cont.isScheduled = false;
+	var timer = setImmediate(function asyncRun() {
+		timer = null;
+		cont.isScheduled = instantCont.isScheduled = false;
 		Promise.run(cont);
+		cont = null;
 	});
-	return cont;
+	function instantCont() {
+		if (!timer) return;
+		clearImmediate(timer);
+		return cont();
+	}
+	cont.isScheduled = instantCont.isScheduled = true;
+	return instantCont;
 };
 
 function ContinuationBuilder(continuations) {

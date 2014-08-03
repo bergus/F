@@ -17,7 +17,9 @@
 		
 		<script type="text/javascript" id="shim">
 			if (!this.setImmediate)
-				this.setImmediate = function setImmediate(fn) { setTimeout(fn, 0); };
+				this.setImmediate = function setImmediate(fn) { return setTimeout(fn, 0); };
+			if (!this.clearImmediate)
+				this.clearImmediate = clearTimeout;
 		</script>
 	</head>
 
