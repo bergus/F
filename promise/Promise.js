@@ -195,7 +195,7 @@ function isCancelled(token) {
 	// it is cancelled when token exists, and .isCancelled yields true
 	return !!token && (token.isCancelled === true || (token.isCancelled !== false && token.isCancelled()));
 }
-function makeMapping(createSubscription) {
+function makeMapping(createSubscription, build) {
 	return function map(fn) {
 		var promise = this;
 		return new AdoptingPromise(function mapResolver(adopt, isCancellable) {
@@ -209,7 +209,7 @@ function makeMapping(createSubscription) {
 					]).get();
 			};
 			return promise.fork(createSubscription(function mapper() {
-				return adopt(Promise.of(fn.apply(this, arguments)));
+				return adopt(build(fn.apply(this, arguments)));
 			}, {
 				proceed: adopt,
 				token: token
@@ -217,10 +217,10 @@ function makeMapping(createSubscription) {
 		});
 	};
 }
-Promise.prototype.map      = makeMapping(function(m, s) { s.success = m; return s; }); // Object.set("success")
-Promise.prototype.mapError = makeMapping(function(m, s) { s.error   = m; return s; }); // Object.set("error")
+Promise.prototype.map      = makeMapping(function(m, s) { s.success = m; return s; }, Promise.of); // Object.set("success")
+Promise.prototype.mapError = makeMapping(function(m, s) { s.error   = m; return s; }, Promise.reject); // Object.set("error")
 
-Promise.prototype.chain = function chain(onfulfilled, onrejected, explicitToken) {
+Promise.prototype.chain = function chain(onfulfilled, onrejected, _, explicitToken) {
 	var promise = this;
 	return new AdoptingPromise(function chainResolver(adopt, isCancellable) {
 		var cancellation = null;
@@ -306,21 +306,21 @@ Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, toke
 	return this.chain(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), onprogress, token);
 };
 
-Promise.prototype.timeout = function(ms) {
+Promise.prototype.timeout = function timeout(ms) {
 	return Promise.timeout(ms, this);
 };
-Promise.timeout = function(ms, p) {
+Promise.timeout = function timeout(ms, p) {
 	return Promise.race([p, Promise.defer(ms).chain(function() {
 		return Promise.reject(new Error("Timed out after "+ms+" ms"));
 	})]);
 };
-Promise.prototype.defer = function(ms) {
+Promise.prototype.defer = function defer(ms) {
 	// a fulfillment will be held up for ms
 	var promise = this;
-	return this.chain(function() {
+	return this.chain(function deferHandler() {
 		// var promise = new FulfilledPromise(arguments);
-		return new AdoptingPromise(function(adopt, isCancellable) {
-			var timerId = setTimeout(function() {
+		return new AdoptingPromise(function deferResolver(adopt, isCancellable) {
+			var timerId = setTimeout(function runDelayed() {
 				timerId = null;
 				Promise.run(adopt(promise));
 			}, ms);
@@ -335,7 +335,7 @@ Promise.prototype.defer = function(ms) {
 		});
 	});
 };
-Promise.defer = function(ms, v) {
+Promise.defer = function defer(ms, v) {
 	return Promise.from(v).defer(ms);
 };
 
