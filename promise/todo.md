@@ -152,11 +152,12 @@ x.map(console.log);
 /* How can we deal with this efficiently?
 [X] above unfolded `chain` call can execute all callbacks synchronously (in the same turn)
 [ ] when executing `chain` callbacks, don't have them schedule their continuations
-[?] the innermost promise resolution needs to resolve n promises
+    TODO. at least they're immediately unscheduled.
+[X] the innermost promise resolution needs to resolve n promises
 [X] when resolving the innermost promise, prevent a stack overflow
 [?] the innermost promise resolution doesn't execute n callbacks
 [X] the innermost promise resolution doesn't need n function calls until the outermost registered callbacks (console.log)
-FAIL after the promise is resolved, adding a new callback doesn't lead to a stack overflow
+[X] after the promise is resolved, adding a new callback doesn't lead to a stack overflow
 
 => We don't get a better complexity than O(n), since we need to resolve n promises. However, for multiple handlers, we should be able to balance the load and get better average complexity.
 => We do not want to get O(n²) runtime where each involved promise uses a subscription with O(n) complexity

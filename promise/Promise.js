@@ -3,31 +3,14 @@
 function makeResolvedPromiseConstructor(state, removable) {
 	return function ResolvedPromise(args) {
 		var that = this;
-		/* var handlers = [],
-		    that = this;
-		function runHandlers() {
-			if (!handlers.length) return;
-			var continuations = [];
-			for (var i=0; i<handlers.length; i++) {
-				var subscription = handlers[i];
-				if (isCancelled(subscription.token)) continue;
-				var cont = subscription[state]
-				  ? subscription[state].apply(null, args)
-				  : subscription.proceed(that);
-				if (typeof cont == "function")
-					continuations.push(cont);
-			}
-			handlers.length = 0;
-			return ContinuationBuilder.join(continuations);
-		} */
 		this.fork = function forkResolved(subscription) {
 			if (isCancelled(subscription.token)) return;
 			var toHandle = typeof subscription[state] == "function",
-			    toProceed = typeof subscription.proceed == "function";
+			    toProceed = typeof subscription.follow == "function";
 			if (!toHandle && !toProceed) return;
 			subscription[removable] = null;
 			if (toHandle) {
-				subscription.proceed = null;
+				subscription.follow = null;
 				// return a generic callback to prevent multiple executions,
 				// instead of just returning Function.prototype.apply.bind(handler, null, args);
 				return function runHandler() {
@@ -38,7 +21,24 @@ function makeResolvedPromiseConstructor(state, removable) {
 					return handler.apply(null, args);
 				};
 			} else { // if (toProceed)
-				return subscription.proceed(that);
+				// TODO? some snippets depend on ResolvedPromsise/fork to execute followers immediately 
+				var handlers = subscription.follow(that);
+				subscription = null;
+				if (!handlers || !handlers.length) return;
+				// TODO? remove follow/removable from handlers right now
+				return function runHandlers() {
+					var continuations = new ContinuationBuilder();
+					for (var i=0; i<handlers.length; i++) {
+						var subscription = handlers[i];
+						if (isCancelled(subscription.token)) continue;
+						if (subscription[state])
+							continuations.add(subscription[state].apply(null, args));
+						else if (subscription.follow)
+							handlers.push.apply(handlers, subscription.follow(that))
+					}
+					handlers.length = 0;
+					return continuations.get();
+				};
 			}
 		};
 	}
@@ -68,12 +68,12 @@ function AdoptingPromise(opt) {
 				this.fork = resolution.fork; // should've been done in the adoption already
 			return cont;
 		}
-		if (subscription.proceed == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
-			return adopt(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
+		if (subscription.follow == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
+			return Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself")).fork({follow: adopt}); // "reject promise with a TypeError as the reason"
 		handlers.push(subscription);
 		return function advanceSubscription() {
 			if (subscription) {
-				if (subscription.lazy)
+				if (typeof subscription.lazy == "function")
 					return subscription.lazy();
 				else
 					subscription.lazy = false;
@@ -86,17 +86,17 @@ function AdoptingPromise(opt) {
 		if (resolution) return; // throw new Error("cannot adopt different promises");
 		resolution = r;
 		that.fork = resolution.fork; // shortcut unnecessary calls, collect garbage methods
-		var conts = new ContinuationBuilder();
-		for (var i=0; i<handlers.length; i++) {
+		for (var i=0, j=0; i<handlers.length; i++) {
 			var subscription = handlers[i];
-			var c = resolution.fork(subscription);
-			if (subscription.lazy === false)
-				conts.add(c); // TODO: better create a single runHandlers continuation?
-			else subscription.lazy = c;
+			if (subscription.lazy !== false)
+				subscription.lazy = resolution.fork(subscription); // TODO: Does it matter when fork() doesn't return a continuation?
+			else if (j++ != i)
+				handlers[j] = handlers[i]; // filter out lazy handlers
 		}
-		handlers = null;
+		handlers.length = j;
 		// advanceAdopting = go; TODO: Unwrap the go continuation once it got here
-		return conts.get();
+		// TODO: nullify handlers
+		return handlers; // sic! Does not return a continuation
 	}
 	var go = opt.call(this, adopt, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
@@ -127,13 +127,13 @@ function Promise(opt) {
 		function makeResolver(constructor) {
 		// creates a fulfill/reject resolver with methods to actually execute the continuations they might return
 			function resolve() {
-				return adopt(new constructor(arguments));
+				return new constructor(arguments).fork({follow: adopt});
 			}
 			resolve.sync = function resolveSync() {
-				Promise.run(adopt(new constructor(arguments)));
+				Promise.run(new constructor(arguments).fork({follow: adopt}));
 			};
 			resolve.async = function resolveAsync() {
-				Promise.runAsync(adopt(new constructor(arguments))); // this creates the continuation immediately
+				Promise.runAsync(new constructor(arguments).fork({follow: adopt})); // this creates the continuation immediately
 			};
 			return resolve;
 		}
@@ -246,13 +246,13 @@ function makeMapping(createSubscription, build) {
 				if (isCancellable(token))
 					return new ContinuationBuilder([
 						promise.send(msg, error),
-						adopt(Promise.reject(error))
+						Promise.reject(error).fork({follow: adopt})
 					]).get();
 			};
 			return promise.fork(createSubscription(function mapper() {
-				return adopt(build(fn.apply(this, arguments)));
+				return build(fn.apply(this, arguments)).fork({follow: adopt});
 			}, {
-				proceed: adopt,
+				follow: adopt,
 				token: token
 			}));
 		});
@@ -274,7 +274,7 @@ function makeChaining(execute) {
 						cancellation = error; // new CancellationError("aim already cancelled") ???
 					return new ContinuationBuilder([
 						promise && promise.send(msg, error),
-						adopt(Promise.reject(error))
+						Promise.reject(error).fork({follow: adopt})
 					]).get();
 				}
 			};
@@ -285,13 +285,13 @@ function makeChaining(execute) {
 					if (cancellation) // the fn() call did cancel us:
 						return promise.send("cancel", cancellation); // revenge!
 					else
-						return promise.fork({proceed: adopt, token: token});
+						return promise.fork({follow: adopt, token: token});
 				};
 			}
 			return execute(promise.fork({
 				success: onfulfilled && makeChainer(onfulfilled),
 				error: onrejected && makeChainer(onrejected),
-				proceed: adopt,
+				follow: adopt,
 				token: token
 			}));
 		});
@@ -360,14 +360,14 @@ Promise.prototype.defer = function(ms) {
 		return new AdoptingPromise(function(adopt, isCancellable) {
 			var timerId = setTimeout(function() {
 				timerId = null;
-				Promise.run(adopt(promise));
+				Promise.run(promise.fork({follow: adopt}));
 			}, ms);
 			this.send = function deferSend(msg, error) {
-				if (msg != "cancel") return promise.send.apply(promise, arguments);
-				if (isCancellable()) {
+				// since promise is always already resolved, we don't need to resend
+				if (msg == "cancel" && isCancellable()) {
 					if (timerId != null)
 						clearTimeout(timerId);
-					return adopt(Promise.reject(error));
+					return Promise.reject(error).fork({follow: adopt});
 				}
 			};
 		});
@@ -391,7 +391,8 @@ Promise.all = function all(promises, opt) {
 		    results = [new Array(length)],
 		    waiting = new Array(length),
 		    width = 1;
-		function cancelRest(continuations, error) {
+		function cancelRest(error) {
+			var continuations = new ContinuationBuilder();
 			for (var j=0; j<length; j++)
 				if (waiting[j])
 					continuations.add(promises[j].send("cancel", error));
@@ -406,7 +407,7 @@ Promise.all = function all(promises, opt) {
 				});
 			}
 			if (isCancellable(token))
-				return cancelRest(new ContinuationBuilder(), error);
+				return cancelRest(error);
 		};
 		return new ContinuationBuilder(promises.map(function(promise, i) {
 			return promise.fork({
@@ -424,13 +425,13 @@ Promise.all = function all(promises, opt) {
 							results[j][i] = arguments[j];
 					}
 					if (--left == 0)
-						return adopt(new FulfilledPromise(spread ? results[0] : results));
+						return new FulfilledPromise(spread ? results[0] : results).fork({follow: adopt});
 				},
-				proceed: function(/*promise*/) {
+				follow: function(/*promise*/) {
 					waiting[i] = null;
-					var conts = new ContinuationBuilder().add(adopt(promise));
 					token.isCancelled = true; // revoke
-					return cancelRest(conts, new CancellationError("aim already rejected"));
+					Promise.run(cancelRest(new CancellationError("aim already rejected"))); // TODO: return continuation with proceed?
+					return adopt(promise);
 				},
 				token: waiting[i] = token
 			});
@@ -441,7 +442,8 @@ Promise.all = function all(promises, opt) {
 Promise.race = function(promises) {
 	return new AdoptingPromise(function raceResolver(adopt, isCancellable) {
 		var token = {isCancelled: false};
-		function cancelExcept(i, continuations, error) {
+		function cancelExcept(i, error) {
+			var continuations = new ContinuationBuilder();
 			for (var j=0; j<length; j++)
 				if (i != j)
 					continuations.add(promises[j].send("cancel", error));
@@ -459,10 +461,10 @@ Promise.race = function(promises) {
 		};
 		return new ContinuationBuilder(promises.map(function(promise, i) {
 			return promise.fork({
-				proceed: function raceWinner(/*promise*/) {
-					var conts = new ContinuationBuilder().add(adopt(promise));
+				follow: function raceWinner(/*promise*/) {
 					token.isCancelled = true; // revoke
-					return cancelExcept(i, conts, new CancellationError("aim already resolved"));
+					cancelExcept(i, new CancellationError("aim already resolved")); // TODO: return continuation with proceed?
+					return adopt(promise);
 				},
 				token: token
 			});

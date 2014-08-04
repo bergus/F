@@ -98,9 +98,10 @@ A (volatile) continuation is *thread-safe* when it does no harm even on recursiv
 
 `fork` does take a `subscription` object as it's sole argument, it does not need to be called as a method. The subscription may have the following (optional) fields:
 
-* `success`: to be called with the fulfillment values when the promise is fulfilled
-* `error`: to be called with the rejection values when the promise is rejected
-* `proceed`: to be called with the promise itself, when the respective one of the above handlers is not present
+* `success`: to be called with the fulfillment values when the promise is fulfilled. Returns a continuation.
+* `error`: to be called with the rejection values when the promise is rejected. Returns a continuation.
+* <s>`proceed`: to be called with the promise itself, when the respective one of the above handlers is not present. Returns a continuation.</s>
+* `follow`: to be called with the promise itself, when it is settled and the respective one of the above handlers is not present. Returns an array of further subscriptions to invoke.
 * `token`: a `CancellationToken` to register, which will prevent the cancellation-rejection of the promise until it is cancelled.
   When cancelled, the whole subscription becomes invalidated, and none of the above handlers are going to be executed.
 
