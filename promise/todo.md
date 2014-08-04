@@ -18,11 +18,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 
 
 /* OPEN ISSUES
-* if a promise is already fulfilled, you can add on*-Handlers which will never be called
-	obviously wrong
-** call handlers when adding them to fulfilled promises? What about restartables then?
-	nothing is restartable
-** public getState function?
+* public getState function?
 	-> synchronous inspection
 * What happens to a stopped multiple promise, which gets started with a new parameter?
 	save arguments
@@ -39,12 +35,14 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   Would the resulting promise resolve as normal, and could (need to) be cancelled a second time?
   Do CancellationErrors need to be propagated at all, or are the promises in the chain already rejected by the cancellation itself?
 * What happens to a then handler (or its result) on a resolved promise that is cancelled before the handler returns?
-	unlikely: the cancellation happens either in the gap between resolving the promise and executing the handlers async,
-	          or is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
-	regardless: the handler should be executed, and its result value should be immediately cancelled
+	unlikely: the cancellation is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
+	-> A handler that is cancelled before it could get executed is no more executed, even it the promise is resolved.
+	-> If the handler did result a promise, that will be immediately cancelled
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
 	no single resolved promise should respond to a `send()` call
 * a cancel attempt message tries to cancel already cancelled promises again
+* a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
+	-> by default, all methods are lazy now; execution needs to be forced by fork()ing and (async)run()ning that continuation. Also `.then` requires strictness.
 */
 
 /* IDEAS
@@ -62,6 +60,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   But that's probably a bad idea anyway, given that the offending continuation might just get re-executed by this
 * unhandled rejections: issue a warning in the handler-runner of rejected promises in case there are no handlers
 * In the runner(s): prevent endless loops - they don't overflow the stack!
+  [X] done for ResolvedPromise|runHandlers
 * In the runner(s): keep a list of the continuations that ran in the loop
   and make it available (to unhandled warnings, or `then` stacktraces) for debugging purposes
   however I am a little unsure how to get information about user code involved in it
@@ -70,13 +69,9 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
   TODO: Prevent circles in the dependency chain, reject promises that depend on themselves
-* a Lazy (subclassing?) constructor that will wait for a "run" message, or just wraps its resolver in an async continuation
-  deferring the resolver into a continuation (will be returned from .fork() and might be ignored) can help with https://github.com/promises-aplus/promises-spec/issues/128
-* asynchronous continuations (probably not a so good idea):
-  every line of control flow is run by its own, async runner (that keeps track of the "stack")
-  this includes cancellation any async action, with the "simple" `return`syntax for the specific canceller
-  only a bit unsure how forked flow works - but it might be an interesting concept for "stop/go":
-                                            everyone with access to the line can make it go, or abandon it
+  	var x = a.chain(function(){ return x.*inner chain*});
+  	var x = a.chain(function(){ return x}).*outer chain*;
+  bonus: work with combinators like .map() in the chain
 
 */
 
@@ -160,13 +155,15 @@ x.map(console.log);
 /* How can we deal with this efficiently?
 [X] above unfolded `chain` call can execute all callbacks synchronously (in the same turn)
 [ ] when executing `chain` callbacks, don't have them schedule their continuations
-[?] the innermost promise resolution needs to resolve n promises
+    TODO. at least they're immediately unscheduled.
+[X] the innermost promise resolution needs to resolve n promises
 [X] when resolving the innermost promise, prevent a stack overflow
 [?] the innermost promise resolution doesn't execute n callbacks
 [X] the innermost promise resolution doesn't need n function calls until the outermost registered callbacks (console.log)
-FAIL after the promise is resolved, adding a new callback doesn't lead to a stack overflow
+[X] after the promise is resolved, adding a new callback doesn't lead to a stack overflow
 
 => We don't get a better complexity than O(n), since we need to resolve n promises. However, for multiple handlers, we should be able to balance the load and get better average complexity.
+=> We do not want to get O(n²) runtime where each involved promise uses a subscription with O(n) complexity
 
 */
 ----
