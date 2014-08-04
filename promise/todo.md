@@ -60,6 +60,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   But that's probably a bad idea anyway, given that the offending continuation might just get re-executed by this
 * unhandled rejections: issue a warning in the handler-runner of rejected promises in case there are no handlers
 * In the runner(s): prevent endless loops - they don't overflow the stack!
+  [X] done for ResolvedPromise|runHandlers
 * In the runner(s): keep a list of the continuations that ran in the loop
   and make it available (to unhandled warnings, or `then` stacktraces) for debugging purposes
   however I am a little unsure how to get information about user code involved in it
@@ -68,7 +69,9 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
   TODO: Prevent circles in the dependency chain, reject promises that depend on themselves
-
+  	var x = a.chain(function(){ return x.*inner chain*});
+  	var x = a.chain(function(){ return x}).*outer chain*;
+  bonus: work with combinators like .map() in the chain
 
 */
 

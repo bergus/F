@@ -21,22 +21,25 @@ function makeResolvedPromiseConstructor(state, removable) {
 					return handler.apply(null, args);
 				};
 			} else { // if (toProceed)
-				// TODO? some snippets depend on ResolvedPromsise/fork to execute followers immediately 
+				// TODO? some snippets depend on ResolvedPromsise/fork to execute followers immediately
 				var handlers = subscription.follow(that);
 				subscription = null;
 				if (!handlers || !handlers.length) return;
 				// TODO? remove follow/removable from handlers right now
 				return function runHandlers() {
 					var continuations = new ContinuationBuilder();
-					for (var i=0; i<handlers.length; i++) {
-						var subscription = handlers[i];
+					for (var i=0; i<handlers.length;) {
+						var subscription = handlers[i++];
+						if (i == handlers.length) // when looking at the last subscription
+							i = handlers.length = 0; // clear the handlers array even before executing, to prevent building an adoption stack
+							                         // alternatively do subscription = handlers.shift() TODO performance test
 						if (isCancelled(subscription.token)) continue;
 						if (subscription[state])
 							continuations.add(subscription[state].apply(null, args));
 						else if (subscription.follow)
 							handlers.push.apply(handlers, subscription.follow(that))
 					}
-					handlers.length = 0;
+					// assert: handlers.length == 0
 					return continuations.get();
 				};
 			}
@@ -84,8 +87,11 @@ function AdoptingPromise(opt) {
 	};
 	function adopt(r) {
 		if (resolution) return; // throw new Error("cannot adopt different promises");
+		if (r == that) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
+			r = Promise.reject(new TypeError("Promise|adopt: not going to assimilate itself")); // "reject promise with a TypeError as the reason"
 		resolution = r;
 		that.fork = resolution.fork; // shortcut unnecessary calls, collect garbage methods
+		that.send = resolution.send;
 		for (var i=0, j=0; i<handlers.length; i++) {
 			var subscription = handlers[i];
 			if (subscription.lazy !== false)
@@ -176,18 +182,30 @@ function ContinuationBuilder(continuations) {
 	} else
 		this.continuations = [];
 }
-ContinuationBuilder.prototype.add = function(cont) { 
+ContinuationBuilder.prototype.add = function add(cont) {
 	if (typeof cont == "function")
 		this.continuations.push(cont);
 	return this;
 };
-ContinuationBuilder.prototype.each = function(elements, iterator) {
+ContinuationBuilder.prototype.each = function each(elements, iterator) {
 	for (var i=0, cont; i<elements.length; i++)
 		if (typeof (cont = iterator(elements[i])) == "function")
 			this.continuations.push(cont);
 	return this;
 };
-ContinuationBuilder.prototype.get = function() {
+ContinuationBuilder.prototype.eachSimilar = function each(elements, iterator) {
+	for (var i=0, cont; i<elements.length; i++) {
+		if (typeof (cont = iterator(elements[i])) == "function") {
+			this.continuations.push(cont);
+			for (var c; ++i<elements.length;)
+				if ((c = iterator(elements[i])) != cont && typeof c == "function")
+					this.continuations.push(cont = c);
+			break;
+		}
+	}
+	return this;
+};
+ContinuationBuilder.prototype.get = function getJoined() {
 	return ContinuationBuilder.join(this.continuations);
 };
 ContinuationBuilder.join = function joinContinuations(continuations) {
