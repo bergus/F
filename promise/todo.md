@@ -20,11 +20,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 /* OPEN ISSUES
 * public getState function?
 	-> synchronous inspection
-* What happens to a stopped multiple promise, which gets started with a new parameter?
-	save arguments
 * conventions for errors: Must be multiple callback?
-* dann-Promises have no chance to receive messages from wenn. Any need for that?
-	no. bubble-up.
 * implement a get(prop) function. ridicoulus approach?
 	-> Functor
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
@@ -43,6 +39,9 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a cancel attempt message tries to cancel already cancelled promises again
 * a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
 	-> by default, all methods are lazy now; execution needs to be forced by fork()ing and (async)run()ning that continuation. Also `.then` requires strictness.
+* assimilation of `then()`/`chainStrict` results (childs) should be lazy, to have as few overhead as possible after calling the callback when noone is interested in the result promise (https://github.com/promises-aplus/promises-spec/issues/128)
+* progress() channel currently is forwarding recursively, while supporting continuations
+* send() channel should support non-recursive resending, not sure whether it expects result values
 */
 
 /* IDEAS
@@ -86,7 +85,7 @@ Any values that are received by the means of the following methods are supposed 
 These especially include the original promise that `.then()` was called on and the child promises that possible handlers might have returned, but the concept applies to all other promise combinators that a library might offer.
 The value of the `onprogress` parameter MIGHT be a function (and MUST have a `.call()` method???). It SHOULD (must???) never be called after a promise has been resolved (see rationale).
 What values exactly are passed through, and how to interact with them, is not part of this specification; though there is a recommendation for function handlers below.
-OPEN: What happens in case of multiple `then()` calls on one promise? Allow event duplication (with child handler calls), or do we require pass-through of the handlers themselves?
+OPEN: What happens in case of multiple `then()` calls on one promise (which might be joined again, e.g. through `.all()`)? Allow event duplication, or do we require pass-through of the handlers themselves down to the event source?
 
 * Send
 Every promise MUST have a `send()` method. When called, it MUST invoke the `.send()` methods on all pending promises that it depends on with the exact same arguments. It MUST `return` the result of such a call, or an array of the results of multiple calls. 

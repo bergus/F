@@ -20,7 +20,7 @@ function makeResolvedPromiseConstructor(state, removable) {
 					subscription = null;
 					return handler.apply(null, args);
 				};
-			} else { // if (toProceed)
+			} else if (toProceed) {
 				// TODO? some snippets depend on ResolvedPromsise/fork to execute followers immediately
 				var handlers = subscription.follow(that);
 				subscription = null;
@@ -104,7 +104,13 @@ function AdoptingPromise(opt) {
 		// TODO: nullify handlers
 		return handlers; // sic! Does not return a continuation
 	}
-	var go = opt.call(this, adopt, function isCancellable(token) {
+	var go = opt.call(this, adopt, function progress() {
+		var args = arguments;
+		return new ContinuationBuilder().each(handlers, function(subscription) {
+			if (subscription.progress && !isCancelled(subscription.token))
+				return subscription.progress.apply(null, args);
+		}).get();
+	}, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
 		// and sets the token state accordingly
 		if (token.isCancelled) return true;
@@ -129,7 +135,7 @@ function AdoptingPromise(opt) {
 }
 
 function Promise(opt) {
-	AdoptingPromise.call(this, function callResolver(adopt) {
+	AdoptingPromise.call(this, function callResolver(adopt, progress) {
 		function makeResolver(constructor) {
 		// creates a fulfill/reject resolver with methods to actually execute the continuations they might return
 			function resolve() {
@@ -144,7 +150,9 @@ function Promise(opt) {
 			return resolve;
 		}
 		// TODO: make a resolver that also accepts promises, not only plain fulfillment values
-		return opt.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise));
+		return opt.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise), function triggerProgress() {
+			Promise.run(progress.apply(this, arguments));
+		});
 	}) 
 }
 
@@ -257,7 +265,7 @@ Promise.reject = function reject() {
 function makeMapping(createSubscription, build) {
 	return function map(fn) {
 		var promise = this;
-		return new AdoptingPromise(function mapResolver(adopt, isCancellable) {
+		return new AdoptingPromise(function mapResolver(adopt, progress, isCancellable) {
 			var token = {isCancelled: false};
 			this.send = function mapSend(msg, error) {
 				if (msg != "cancel") return promise.send.apply(promise, arguments);
@@ -271,6 +279,7 @@ function makeMapping(createSubscription, build) {
 				return build(fn.apply(this, arguments)).fork({follow: adopt});
 			}, {
 				follow: adopt,
+				progress: progress,
 				token: token
 			}));
 		});
@@ -282,7 +291,7 @@ Promise.prototype.mapError = makeMapping(function(m, s) { s.error   = m; return 
 function makeChaining(execute) {
 	return function chain(onfulfilled, onrejected, explicitToken) {
 		var promise = this;
-		return new AdoptingPromise(function chainResolver(adopt, isCancellable) {
+		return new AdoptingPromise(function chainResolver(adopt, progress, isCancellable) {
 			var cancellation = null;
 			var token = explicitToken || {isCancelled: false};
 			this.send = function chainSend(msg, error) {
@@ -303,13 +312,14 @@ function makeChaining(execute) {
 					if (cancellation) // the fn() call did cancel us:
 						return promise.send("cancel", cancellation); // revenge!
 					else
-						return promise.fork({follow: adopt, token: token});
+						return promise.fork({follow: adopt, progress: progress, token: token});
 				};
 			}
 			return execute(promise.fork({
 				success: onfulfilled && makeChainer(onfulfilled),
 				error: onrejected && makeChainer(onrejected),
 				follow: adopt,
+				progress: progress,
 				token: token
 			}));
 		});
@@ -343,9 +353,11 @@ Promise.method = function makeThenHandler(fn, warn) {
 				// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
 				then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
 			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
-				reject.async(e); "reject promise with e as the 	reason (unless already resolved)"
+				reject.async(e); // "reject promise with e as the reason (unless already resolved)"
 			}
-		}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
+		}).chain(function(res) {
+			return Promise.resolve(res);
+		}); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
 	};
 };
 
@@ -359,7 +371,8 @@ Promise.resolve = Promise.method(function getResolveValue(v) {
 });
 
 Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, token) {
-	return this.chainStrict(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), onprogress, token);
+	if (onprogress) this.fork({progress: onprogress, token: token}); // TODO: check consistency with progress spec
+	return this.chainStrict(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), token);
 };
 
 Promise.prototype.timeout = function timeout(ms) {
@@ -375,19 +388,21 @@ Promise.prototype.defer = function defer(ms) {
 	var promise = this;
 	return this.chain(function deferHandler() {
 		// var promise = new FulfilledPromise(arguments);
-		return new AdoptingPromise(function deferResolver(adopt, isCancellable) {
+		return new AdoptingPromise(function deferResolver(adopt, progress, isCancellable) {
+			var token = {isCancelled: false};
 			var timerId = setTimeout(function runDelayed() {
 				timerId = null;
 				Promise.run(promise.fork({follow: adopt}));
 			}, ms);
 			this.send = function deferSend(msg, error) {
 				// since promise is always already resolved, we don't need to resend
-				if (msg == "cancel" && isCancellable()) {
+				if (msg == "cancel" && isCancellable(token)) {
 					if (timerId != null)
 						clearTimeout(timerId);
 					return Promise.reject(error).fork({follow: adopt});
 				}
 			};
+			promise.fork({progress: progress, token: token});
 		});
 	});
 };
@@ -402,7 +417,7 @@ Promise.all = function all(promises, opt) {
 	}
 	var spread = opt & 2,
 	    notranspose = opt & 1;
-	return new AdoptingPromise(function allResolver(adopt, isCancellable) {
+	return new AdoptingPromise(function allResolver(adopt, progress, isCancellable) {
 		var length = promises.length,
 		    token = {isCancelled: false},
 		    left = length,
@@ -451,6 +466,7 @@ Promise.all = function all(promises, opt) {
 					Promise.run(cancelRest(new CancellationError("aim already rejected"))); // TODO: return continuation with proceed?
 					return adopt(promise);
 				},
+				progress: progress,
 				token: waiting[i] = token
 			});
 		})).get();
@@ -458,7 +474,7 @@ Promise.all = function all(promises, opt) {
 };
 
 Promise.race = function(promises) {
-	return new AdoptingPromise(function raceResolver(adopt, isCancellable) {
+	return new AdoptingPromise(function raceResolver(adopt, progress, isCancellable) {
 		var token = {isCancelled: false};
 		function cancelExcept(i, error) {
 			var continuations = new ContinuationBuilder();
@@ -484,6 +500,7 @@ Promise.race = function(promises) {
 					cancelExcept(i, new CancellationError("aim already resolved")); // TODO: return continuation with proceed?
 					return adopt(promise);
 				},
+				progress: progress,
 				token: token
 			});
 		}));
