@@ -42,6 +42,8 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * assimilation of `then()`/`chainStrict` results (childs) should be lazy, to have as few overhead as possible after calling the callback when noone is interested in the result promise (https://github.com/promises-aplus/promises-spec/issues/128)
 * progress() channel currently is forwarding recursively, while supporting continuations
 * send() channel should support non-recursive resending, not sure whether it expects result values
+* What does the progress argument to `then` do? Is `.then(null, null, handle)` only equivalent to `.onprogress(handle)`? Or does it register anything on childs as well, i.e. `.then(…, …, handle)` equals `.then(…, …).onprogress(handle)`?
+  Or does it even do any filtering? Check progression drafts.
 */
 
 /* IDEAS
@@ -71,7 +73,12 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   	var x = a.chain(function(){ return x.*inner chain*});
   	var x = a.chain(function(){ return x}).*outer chain*;
   bonus: work with combinators like .map() in the chain
-
+* distinguish between continuations and handlers by the function's `.length` property - continuations don't take a parameter.
+  Implement a Promise.trigger(handler, args...) function in terms of that, where a handler can also return another handler to be called with the same arguments.
+  Use that for `send` and `progress` bubbling
+* split proceed::((promise)->continuation)->continuation and instruct::Array<Subscription>
+	-> see promise-instructing branch
+* make progress listening lazy: `send()` down listeners to dependencies only when they are installed
 */
 
 /* SPEC: Communication

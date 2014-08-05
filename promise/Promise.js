@@ -104,12 +104,13 @@ function AdoptingPromise(opt) {
 		// TODO: nullify handlers
 		return handlers; // sic! Does not return a continuation
 	}
-	var go = opt.call(this, adopt, function progress() {
-		var args = arguments;
-		return new ContinuationBuilder().each(handlers, function(subscription) {
-			if (subscription.progress && !isCancelled(subscription.token))
-				return subscription.progress.apply(null, args);
-		}).get();
+	var go = opt.call(this, adopt, function progress(event) {
+		var progressHandlers = handlers.filter(function(subscription) { return subscription.progress && !isCancelled(subscription.token); });
+		if (progressHandlers.length <= 1) return progressHandlers[0].progress;
+		var conts = new ContinuationBuilder();
+		for (var i=0; i<progressHandlers.length; i++)
+			conts.add(Promise.trigger(progressHandlers[i].progress, arguments));
+		return conts.get();
 	}, function isCancellable(token) {
 		// tests whether there are no (more) CancellationTokens registered with the promise,
 		// and sets the token state accordingly
@@ -151,9 +152,9 @@ function Promise(opt) {
 		}
 		// TODO: make a resolver that also accepts promises, not only plain fulfillment values
 		return opt.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise), function triggerProgress() {
-			Promise.run(progress.apply(this, arguments));
+			Promise.run(Promise.trigger(progress, arguments));
 		});
-	}) 
+	});
 }
 
 FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype = Promise.prototype;
@@ -167,7 +168,7 @@ Promise.runAsync = function runAsync(cont) {
 	var timer = setImmediate(function asyncRun() {
 		timer = null;
 		cont.isScheduled = instantCont.isScheduled = false;
-		Promise.run(cont);
+		Promise.run(cont); // Inline?
 		cont = null;
 	});
 	function instantCont() {
@@ -177,6 +178,11 @@ Promise.runAsync = function runAsync(cont) {
 	}
 	cont.isScheduled = instantCont.isScheduled = true;
 	return instantCont;
+};
+Promise.trigger = function trigger(handler, args) {
+	while (typeof handler == "function" && handler.length) // the length (existence of a formal parameter) distinguishes it from a continuation
+		handler = handler.apply(null, args);
+	return handler; // continuation, or whatever else it is
 };
 
 function ContinuationBuilder(continuations) {
@@ -371,7 +377,8 @@ Promise.resolve = Promise.method(function getResolveValue(v) {
 });
 
 Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, token) {
-	if (onprogress) this.fork({progress: onprogress, token: token}); // TODO: check consistency with progress spec
+	if (onprogress)
+		this.fork({progress: function(event) { onprogress.apply(this, arguments); }, token: token}); // TODO: check consistency with progress spec
 	return this.chainStrict(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), token);
 };
 
@@ -388,7 +395,7 @@ Promise.prototype.defer = function defer(ms) {
 	var promise = this;
 	return this.chain(function deferHandler() {
 		// var promise = new FulfilledPromise(arguments);
-		return new AdoptingPromise(function deferResolver(adopt, progress, isCancellable) {
+		return new AdoptingPromise(function deferResolver(adopt, _, isCancellable) {
 			var token = {isCancelled: false};
 			var timerId = setTimeout(function runDelayed() {
 				timerId = null;
@@ -402,7 +409,6 @@ Promise.prototype.defer = function defer(ms) {
 					return Promise.reject(error).fork({follow: adopt});
 				}
 			};
-			promise.fork({progress: progress, token: token});
 		});
 	});
 };
