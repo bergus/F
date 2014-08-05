@@ -91,7 +91,7 @@ function AdoptingPromise(opt) {
 			r = Promise.reject(new TypeError("Promise|adopt: not going to assimilate itself")); // "reject promise with a TypeError as the reason"
 		resolution = r;
 		that.fork = resolution.fork; // shortcut unnecessary calls, collect garbage methods
-		that.send = resolution.send;
+		that.onsend = resolution.onsend;
 		for (var i=0, j=0; i<handlers.length; i++) {
 			var subscription = handlers[i];
 			if (subscription.lazy !== false)
@@ -238,15 +238,19 @@ ContinuationBuilder.join = function joinContinuations(continuations) {
 	};
 };
 
-Promise.prototype.send = function noop() {};
+Promise.prototype.onsend = function noHandler(event) {};
+Promise.prototype.send = function send() {
+	return Promise.run(Promise.trigger(this.send, arguments));
+};
 
 Promise.prototype.cancel = function cancel(reason, token) {
-	// TODO: assert: promise  is still pending. Return false otherwise.
+	if (this.send != Promise.prototype.send) // needs to be still pending, with the ability to send messages
+		return false;
 	if (!(reason && reason instanceof Error && reason.cancelled===true))
 		reason = new CancellationError(reason || "cancelled operation");
 	if (token)
 		token.isCancelled = true; // revoke it
-	Promise.run(this.send("cancel", reason)); // TODO: asnyc?
+	Promise.run(Promise.trigger(this.onsend, ["cancel", reason]));
 };
 
 function CancellationError(message) {
@@ -273,11 +277,11 @@ function makeMapping(createSubscription, build) {
 		var promise = this;
 		return new AdoptingPromise(function mapResolver(adopt, progress, isCancellable) {
 			var token = {isCancelled: false};
-			this.send = function mapSend(msg, error) {
-				if (msg != "cancel") return promise.send.apply(promise, arguments);
+			this.onsend = function mapSend(msg, error) {
+				if (msg != "cancel") return promise.onsend;
 				if (isCancellable(token))
 					return new ContinuationBuilder([
-						promise.send(msg, error),
+						Promise.trigger(promise.onsend, arguments),
 						Promise.reject(error).fork({follow: adopt})
 					]).get();
 			};
@@ -300,13 +304,13 @@ function makeChaining(execute) {
 		return new AdoptingPromise(function chainResolver(adopt, progress, isCancellable) {
 			var cancellation = null;
 			var token = explicitToken || {isCancelled: false};
-			this.send = function chainSend(msg, error) {
-				if (msg != "cancel") return promise && promise.send.apply(promise, arguments);
+			this.onsend = function chainSend(msg, error) {
+				if (msg != "cancel") return promise && promise.onsend;
 				if (explicitToken ? isCancelled(explicitToken) : isCancellable(token)) {
 					if (!promise) // there currently is no dependency, store for later
 						cancellation = error; // new CancellationError("aim already cancelled") ???
 					return new ContinuationBuilder([
-						promise && promise.send(msg, error),
+						promise && Promise.trigger(promise.onsend, arguments),
 						Promise.reject(error).fork({follow: adopt})
 					]).get();
 				}
@@ -316,7 +320,7 @@ function makeChaining(execute) {
 					promise = null;
 					promise = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
 					if (cancellation) // the fn() call did cancel us:
-						return promise.send("cancel", cancellation); // revenge!
+						return Promise.trigger(promise.onsend, ["cancel", cancellation]); // revenge!
 					else
 						return promise.fork({follow: adopt, progress: progress, token: token});
 				};
@@ -354,10 +358,10 @@ Promise.method = function makeThenHandler(fn, warn) {
 		}
 		if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
 			return Promise.of(v);
-		return new Promise(function thenableResolver(fulfill, reject) {
+		return new Promise(function thenableResolver(fulfill, reject, progress) {
 			try {
 				// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
-				then.call(v, fulfill.async, reject.async); // TODO: support progression and cancellation
+				then.call(v, fulfill.async, reject.async, progress); // TODO: support cancellation
 			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
 				reject.async(e); // "reject promise with e as the reason (unless already resolved)"
 			}
@@ -401,7 +405,7 @@ Promise.prototype.defer = function defer(ms) {
 				timerId = null;
 				Promise.run(promise.fork({follow: adopt}));
 			}, ms);
-			this.send = function deferSend(msg, error) {
+			this.onsend = function deferSend(msg, error) {
 				// since promise is always already resolved, we don't need to resend
 				if (msg == "cancel" && isCancellable(token)) {
 					if (timerId != null)
@@ -418,7 +422,7 @@ Promise.defer = function defer(ms, v) {
 
 Promise.all = function all(promises, opt) {
 	if (!Array.isArray(promises)) {
-		promises = arguments;
+		promises = Array.prototype.slice.call(arguments);
 		opt = 2;
 	}
 	var spread = opt & 2,
@@ -430,23 +434,16 @@ Promise.all = function all(promises, opt) {
 		    results = [new Array(length)],
 		    waiting = new Array(length),
 		    width = 1;
-		function cancelRest(error) {
+		function notifyRest(args) {
 			var continuations = new ContinuationBuilder();
 			for (var j=0; j<length; j++)
 				if (waiting[j])
-					continuations.add(promises[j].send("cancel", error));
-			return continuations.get();
+					continuations.add(Promise.trigger(promises[j].onsend, args));
+			return continuations;
 		}
-		this.send = function allSend(msg, error) {
-			if (msg != "cancel") {
-				var args = arguments;
-				return promises.map(function(promise) {
-					// TODO: exclude already resolved ones?
-					return promise.send.apply(promise, args);
-				});
-			}
-			if (isCancellable(token))
-				return cancelRest(error);
+		this.onsend = function allSend(msg, error) {
+			if (msg != "cancel" || isCancellable(token))
+				return notifyRest(arguments).get();
 		};
 		return new ContinuationBuilder(promises.map(function(promise, i) {
 			return promise.fork({
@@ -469,7 +466,7 @@ Promise.all = function all(promises, opt) {
 				follow: function(/*promise*/) {
 					waiting[i] = null;
 					token.isCancelled = true; // revoke
-					Promise.run(cancelRest(new CancellationError("aim already rejected"))); // TODO: return continuation with proceed?
+					Promise.run(notifyRest(["cancel", new CancellationError("aim already rejected")])); // TODO: return continuation with proceed?
 					return adopt(promise);
 				},
 				progress: progress,
@@ -482,28 +479,22 @@ Promise.all = function all(promises, opt) {
 Promise.race = function(promises) {
 	return new AdoptingPromise(function raceResolver(adopt, progress, isCancellable) {
 		var token = {isCancelled: false};
-		function cancelExcept(i, error) {
+		function notifyExcept(i, args) {
 			var continuations = new ContinuationBuilder();
 			for (var j=0; j<length; j++)
 				if (i != j)
-					continuations.add(promises[j].send("cancel", error));
+					continuations.add(Promise.trigger(promises[j].onsend, args));
 			return continuations.get();
 		}
-		this.send = function raceSend(msg, error) {
-			if (msg != "cancel") {
-				var args = arguments;
-				return promises.map(function(promise) {
-					return promise.send.apply(promise, args);
-				});
-			}
-			if (isCancellable(token))
-				return cancelExcept(-1, new ContinuationBuilder(), error);
+		this.onsend = function raceSend(msg, error) {
+			if (msg != "cancel" || isCancellable(token))
+				return notifyExcept(-1, arguments);
 		};
 		return new ContinuationBuilder(promises.map(function(promise, i) {
 			return promise.fork({
 				follow: function raceWinner(/*promise*/) {
 					token.isCancelled = true; // revoke
-					cancelExcept(i, new CancellationError("aim already resolved")); // TODO: return continuation with proceed?
+					Promise.run(notifyExcept(i, ["cancel", new CancellationError("aim already resolved")])); // TODO: return continuation with proceed?
 					return adopt(promise);
 				},
 				progress: progress,

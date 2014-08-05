@@ -117,4 +117,7 @@ The `fork` method will return a continuation that when called will
 When this continuation is not called, the subscription is considered to be lazy, and the progress of the task can stall. It still can prevent the promise from being cancelled however.
 The handlers will not be executed before this continuation has been called.
 
-### `promise.send` ###
+### `promise.onsend` ###
+`onsend` is the inverse of `onprogress`. It is a primitive method that is installed when constructing a promise, and needs to take at least one formal parameter (to distinguish it from a continuation). It can receive messages, and will either react to them or forward them to each of the promise's dependencies.
+
+It will either return another `onsend` handler to which the message should be forwarded, a continuation for the reaction, or nothing. It is expected to be executed with `Promise.trigger` and `Promise.run`. This mechanism is used for cancellation. Other messages than `"cancel"` are transparently forwarded.

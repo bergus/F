@@ -35,13 +35,12 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 	-> A handler that is cancelled before it could get executed is no more executed, even it the promise is resolved.
 	-> If the handler did result a promise, that will be immediately cancelled
 * a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
-	no single resolved promise should respond to a `send()` call
+	-> no single resolved promise should respond to a `send()` call
 * a cancel attempt message tries to cancel already cancelled promises again
 * a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
 	-> by default, all methods are lazy now; execution needs to be forced by fork()ing and (async)run()ning that continuation. Also `.then` requires strictness.
 * assimilation of `then()`/`chainStrict` results (childs) should be lazy, to have as few overhead as possible after calling the callback when noone is interested in the result promise (https://github.com/promises-aplus/promises-spec/issues/128)
 * progress() channel currently is forwarding recursively, while supporting continuations
-* send() channel should support non-recursive resending, not sure whether it expects result values
 * What does the progress argument to `then` do? Is `.then(null, null, handle)` only equivalent to `.onprogress(handle)`? Or does it register anything on childs as well, i.e. `.then(…, …, handle)` equals `.then(…, …).onprogress(handle)`?
   Or does it even do any filtering? Check progression drafts.
 */
@@ -73,9 +72,6 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   	var x = a.chain(function(){ return x.*inner chain*});
   	var x = a.chain(function(){ return x}).*outer chain*;
   bonus: work with combinators like .map() in the chain
-* distinguish between continuations and handlers by the function's `.length` property - continuations don't take a parameter.
-  Implement a Promise.trigger(handler, args...) function in terms of that, where a handler can also return another handler to be called with the same arguments.
-  Use that for `send` and `progress` bubbling
 * split proceed::((promise)->continuation)->continuation and instruct::Array<Subscription>
 	-> see promise-instructing branch
 * make progress listening lazy: `send()` down listeners to dependencies only when they are installed
