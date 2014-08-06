@@ -146,7 +146,10 @@ function Promise(opt) {
 				Promise.run(new constructor(arguments).fork({follow: adopt}));
 			};
 			resolve.async = function resolveAsync() {
-				Promise.runAsync(new constructor(arguments).fork({follow: adopt})); // this creates the continuation immediately
+				var cont = new constructor(arguments).fork({follow: adopt}); // this creates the continuation immediately
+				setImmediate(function runAsyncResolution() {
+					Promise.run(cont);
+				});
 			};
 			return resolve;
 		}
@@ -228,6 +231,7 @@ ContinuationBuilder.join = function joinContinuations(continuations) {
 		var l = continuations.length;
 		if (!l) return;
 		for (var i=0, j=0; i<l; i++) {
+			// TODO: Implement debugging
 			var cont = continuations[i];
 			cont = cont(); // assert: cont != runBranches ???
 			if (typeof cont == "function")
@@ -302,8 +306,9 @@ function makeChaining(execute) {
 	return function chain(onfulfilled, onrejected, explicitToken) {
 		var promise = this;
 		return new AdoptingPromise(function chainResolver(adopt, progress, isCancellable) {
-			var cancellation = null;
-			var token = explicitToken || {isCancelled: false};
+			var cancellation = null,
+			    token = explicitToken || {isCancelled: false},
+			    strict = false, done;
 			this.onsend = function chainSend(msg, error) {
 				if (msg != "cancel") return promise && promise.onsend;
 				if (explicitToken ? isCancelled(explicitToken) : isCancellable(token)) {
@@ -321,17 +326,25 @@ function makeChaining(execute) {
 					promise = fn.apply(undefined, arguments); // A+ 2.2.5 "must be called as functions (i.e. with no  this  value)"
 					if (cancellation) // the fn() call did cancel us:
 						return Promise.trigger(promise.onsend, ["cancel", cancellation]); // revenge!
-					else
+					else if (strict)
 						return promise.fork({follow: adopt, progress: progress, token: token});
+					else
+						done = promise.fork({follow: adopt, progress: progress, token: token});
 				};
 			}
-			return execute(promise.fork({
+			var go = execute(promise.fork({
 				success: onfulfilled && makeChainer(onfulfilled),
 				error: onrejected && makeChainer(onrejected),
 				follow: adopt,
 				progress: progress,
 				token: token
 			}));
+			return function advanceChain() { // TODO: prove correctness
+				if (done) // this was not called before asyncRun got executed, and strict was never set to true
+					return done();
+				strict = true;
+				return go();
+			}
 		});
 	};
 }
@@ -365,9 +378,7 @@ Promise.method = function makeThenHandler(fn, warn) {
 			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
 				reject.async(e); // "reject promise with e as the reason (unless already resolved)"
 			}
-		}).chain(function(res) {
-			return Promise.resolve(res);
-		}); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
+		}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
 	};
 };
 

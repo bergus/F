@@ -39,7 +39,6 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * a cancel attempt message tries to cancel already cancelled promises again
 * a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
 	-> by default, all methods are lazy now; execution needs to be forced by fork()ing and (async)run()ning that continuation. Also `.then` requires strictness.
-* assimilation of `then()`/`chainStrict` results (childs) should be lazy, to have as few overhead as possible after calling the callback when noone is interested in the result promise (https://github.com/promises-aplus/promises-spec/issues/128)
 * progress() channel currently is forwarding recursively, while supporting continuations
 * What does the progress argument to `then` do? Is `.then(null, null, handle)` only equivalent to `.onprogress(handle)`? Or does it register anything on childs as well, i.e. `.then(…, …, handle)` equals `.then(…, …).onprogress(handle)`?
   Or does it even do any filtering? Check progression drafts.
@@ -64,7 +63,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * In the runner(s): keep a list of the continuations that ran in the loop
   and make it available (to unhandled warnings, or `then` stacktraces) for debugging purposes
   however I am a little unsure how to get information about user code involved in it
-  likely to be interesting are stack traces from the creation of Promise objects, not the about the many callbacks that were executed
+  likely to be interesting are stack traces from the creation of Promise objects, not those about the many callbacks that were executed
 * bind message to Promise.run from which async action the continuations are ran, and where the call to this task was issued
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
