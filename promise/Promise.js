@@ -372,12 +372,14 @@ Promise.method = function makeThenHandler(fn, warn) {
 		if (typeof then != "function") // A+ 2.3.3.4 "If then is not a function, fulfill promise with x"
 			return Promise.of(v);
 		return new Promise(function thenableResolver(fulfill, reject, progress) {
-			try {
-				// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
-				then.call(v, fulfill.async, reject.async, progress); // TODO: support cancellation
-			} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
-				reject.async(e); // "reject promise with e as the reason (unless already resolved)"
-			}
+			return function advanceThenableResolution() { // Lazyness!
+				try {
+					// A+ 2.3.3.3 "call then with x as this, first argument resolvePromise, and second argument rejectPromise"
+					then.call(v, fulfill.async, reject.async, progress); // TODO: support cancellation
+				} catch(e) { // A+ 2.3.3.3.4 "If calling then throws an exception e"
+					reject.async(e); // "reject promise with e as the reason (unless already resolved)"
+				}
+			};
 		}).chain(Promise.resolve); // A+ 2.3.3.3.1 "when resolvePromise is called with a value y, run [[Resolve]](promise, y)" (recursively)
 	};
 };
