@@ -74,6 +74,21 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * split proceed::((promise)->continuation)->continuation and instruct::Array<Subscription>
 	-> see promise-instructing branch
 * make progress listening lazy: `send()` down listeners to dependencies only when they are installed
+* explicit .mapSafe/.chainSafe methods
+* for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT, with a concurrency option
+* using::((C -> Promise<R>) -> ((args) -> Promise<R>)
+  	function usingConnection(handle) {
+  		return function(args) {
+  			return connect(args).then(function(connection, close) {
+  				return handle(connection).finally(close);
+  			})
+  		};
+  	}
+  but using multiple ressources?
+* make error constructors that are not invoked as constructors, but as Promise methods, return rejected promises:
+  `return Promise.Error(…)` == `return Promise.reject(new Promise.Error(…))`
+  + shorter syntax - needs clear communication - is inconsistent with native errors - easy to get wrong
+  better as distinct, lowercase methods? `Promise.error(…)`
 */
 
 /* SPEC: Communication
