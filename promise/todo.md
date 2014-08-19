@@ -42,6 +42,10 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * progress() channel currently is forwarding recursively, while supporting continuations
 * What does the progress argument to `then` do? Is `.then(null, null, handle)` only equivalent to `.onprogress(handle)`? Or does it register anything on childs as well, i.e. `.then(…, …, handle)` equals `.then(…, …).onprogress(handle)`?
   Or does it even do any filtering? Check progression drafts.
+* Is a per-promise global `runHandlers` function and `handlers` array harmful?
+  - is there a contract that only the current-subscription attached handlers are called by the returned continuations? Or is the continuation free to run the handlers *and their continuations*?
+  - is the order of invocation of the continuations messed up by this? Or is that not guaranteed anyways?
+  - are there cases where a non-global `handlers` array, and a new continuation for each level, leads to a really harmful recursive descent?
 */
 
 /* IDEAS
@@ -58,12 +62,22 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   	}
   But that's probably a bad idea anyway, given that the offending continuation might just get re-executed by this
 * unhandled rejections: issue a warning in the handler-runner of rejected promises in case there are no handlers
+  a rejected promise is not handled until an error handler was executed for it, and that one led not to another fork() call
 * In the runner(s): prevent endless loops - they don't overflow the stack!
   [X] done for ResolvedPromise|runHandlers
 * In the runner(s): keep a list of the continuations that ran in the loop
   and make it available (to unhandled warnings, or `then` stacktraces) for debugging purposes
   however I am a little unsure how to get information about user code involved in it
-  likely to be interesting are stack traces from the creation of Promise objects, not those about the many callbacks that were executed
+  - logging functions to add details to the current line might be called in continuations
+  - logging functions that open/close groups of lines with a prefix might be used by continuations that run multiple things
+  
+  likely to be interesting (for unhandled rejections?) are stack traces from the creation of Promise objects, not those about the many callbacks that were executed
+  
+  There are three stack traces that might be interesting for promise consumers:
+  - the "real" call stack, on which the async callback, Promise.run, a few continuations and the handler are found
+  - the promise resolutions that led to the current callback being called - basically the list of continuations that were Promise.run
+  - the call from which the current handler *was installed* (and recursively, if that was a handler, it's installation...)
+  security implications, possibly leaking information about other subscribers?
 * bind message to Promise.run from which async action the continuations are ran, and where the call to this task was issued
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
@@ -76,19 +90,47 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * make progress listening lazy: `send()` down listeners to dependencies only when they are installed
 * explicit .mapSafe/.chainSafe methods
 * for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT, with a concurrency option
-* using::((C -> Promise<R>) -> ((args) -> Promise<R>)
-  	function usingConnection(handle) {
-  		return function(args) {
-  			return connect(args).then(function(connection, close) {
-  				return handle(connection).finally(close);
+* usingX::((Promise<C> -> Promise<R>) -> Promise<R>
+  	function withConnection(args) {
+  		return function(handle) {
+  			var done;
+  			return handle(connect(args).map(function(connection, close) {
+  				done = close();
+  				return connection
+  			}).finally(function() {
+  				done();
   			})
   		};
   	}
-  but using multiple ressources?
+  using :: [(Promise<C> -> Promise<R>) -> Promise<R>], ([C] -> Promise<R>) -> Promise<R>
+  	using = function() { arguments.slice(0, -1).reduceRight(function(inner, useWith) {
+  			return useWith(function(c) { return inner.apply(this, arguments.concat([c])); });
+  		}, Promise.all.invoke("then", arguments[-1]));
+  	}
+  or better
+  usingX::Promise<(C -> Promise<R>) -> Promise<R>>
+  	function withConnection(args) {
+  		return connect(args).map(function(connection, close) {
+  			return function(handle) {
+  				return handle(connection).finally(close);
+  			})
+  		}; // relies on the handler being called, and the connect() promise not to be cancelled
+  		   // otherwise .finally() is never executed and we leak
+  		   // but attaching it after the map is complicated (see above)
+  		   // while using Promise<C> makes using multiple ressources in parallel impossible
+  	}
 * make error constructors that are not invoked as constructors, but as Promise methods, return rejected promises:
   `return Promise.Error(…)` == `return Promise.reject(new Promise.Error(…))`
   + shorter syntax - needs clear communication - is inconsistent with native errors - easy to get wrong
   better as distinct, lowercase methods? `Promise.error(…)`
+* make onSend() [try to] invoke methods with the name of the message on assimilated foreign promises (that don't provide an onSend method)
+  make "cancel" also invoke "abort" (e.g. jQuery ajax)?
+* should there be stop/go messages that hold up (and leave go) the execution of a promise chain?
+  - Node.js streams have a cork()/uncork() method for this
+  - is there an inherent danger to have possibly "hanging" promises, which are always-pending and don't trigger finally() handlers?
+* implement finally:
+  - finally: function fin() { Promise.cast(handler(promise).thenResolve(promise); } return this.then(fin, fin);
+  - always: register a token-less handler and return original promise
 */
 
 /* SPEC: Communication
