@@ -78,6 +78,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   - the promise resolutions that led to the current callback being called - basically the list of continuations that were Promise.run
   - the call from which the current handler *was installed* (and recursively, if that was a handler, it's installation...)
   security implications, possibly leaking information about other subscribers?
+  https://stackoverflow.com/questions/24076676/call-stack-for-callbacks-in-node-js/24077055#24077055
 * bind message to Promise.run from which async action the continuations are ran, and where the call to this task was issued
 * a PendingPromise constructor that eats all handlers (for breakfast)
 * a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
@@ -90,15 +91,18 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * make progress listening lazy: `send()` down listeners to dependencies only when they are installed
 * explicit .mapSafe/.chainSafe methods
 * for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT, with a concurrency option
-* usingX::((Promise<C> -> Promise<R>) -> Promise<R>
+* Disposable = Promise<(C, disposer)>; disposer = Promise<R> -> void|Promise<X, E>
+  usingX::((Promise<C> -> Promise<R>) -> Promise<R>
   	function withConnection(args) {
   		return function(handle) {
+  			// var conn = connect(args);
+  			// return handle(conn.map(first)).finally(=>conn.map(second).chain(call));
   			var done;
   			return handle(connect(args).map(function(connection, close) {
-  				done = close();
+  				done = close;
   				return connection
-  			}).finally(function() {
-  				done();
+  			})).finally(function() {
+  				return done && done();
   			})
   		};
   	}
@@ -107,18 +111,25 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   			return useWith(function(c) { return inner.apply(this, arguments.concat([c])); });
   		}, Promise.all.invoke("then", arguments[-1]));
   	}
-  or better
+  or maybe
   usingX::Promise<(C -> Promise<R>) -> Promise<R>>
   	function withConnection(args) {
   		return connect(args).map(function(connection, close) {
   			return function(handle) {
   				return handle(connection).finally(close);
   			})
-  		}; // relies on the handler being called, and the connect() promise not to be cancelled
+  		}; // relies on the handler being always called (and the connect() promise not to be cancelled)
   		   // otherwise .finally() is never executed and we leak
   		   // but attaching it after the map is complicated (see above)
-  		   // while using Promise<C> makes using multiple ressources in parallel impossible
   	}
+  while using the following pattern has concise syntax, but makes requesting multiple ressources in parallel impossible
+  usingX::(C -> Promise<R>) -> Promise<R>
+  	function withConnection(args) {
+  		return connect(args).then(function(connection, close) {
+  			return handle(connection).finally(close);
+  		}); // cancelling the connect() promise still doesn't guarantee a call to close()
+  	}
+  Maybe implement timeout to console.error() undisposed ressources
 * make error constructors that are not invoked as constructors, but as Promise methods, return rejected promises:
   `return Promise.Error(…)` == `return Promise.reject(new Promise.Error(…))`
   + shorter syntax - needs clear communication - is inconsistent with native errors - easy to get wrong
@@ -129,8 +140,15 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   - Node.js streams have a cork()/uncork() method for this
   - is there an inherent danger to have possibly "hanging" promises, which are always-pending and don't trigger finally() handlers?
 * implement finally:
-  - finally: function fin() { Promise.cast(handler(promise).thenResolve(promise); } return this.then(fin, fin);
+  - finally: function fin() { Promise.cast(handler(promise)).thenResolve(promise); } return promise.then(fin, fin);
+    this can be cancelled!
   - always: register a token-less handler and return original promise
+* have a "no-token" value for the cancellationToken parameter of `.then()` which causes a strict execution of the handler even in cancellation case
+  guarantee evaluation of child promises in cancellation case?
+* abortable promises: send an "abort" message to the farthest pending ancestor that has an onabort handler, and let that reject this promise
+  how to find whether there is a farther onabort handler? By not getting a resolve continuation back from trigger?
+  promises are not abortable by default. Use .makeAbortable(abortionHandler)
+* Promise::send = function(msg, ...args) { Promise.run(Promise.trigger(this.onsend, msg, args)); }
 */
 
 /* SPEC: Communication
