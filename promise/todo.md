@@ -92,42 +92,23 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * explicit .mapSafe/.chainSafe methods
 * for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT, with a concurrency option
 * Disposable = Promise<(C, disposer)>; disposer = Promise<R> -> void|Promise<X, E>
-  usingX::((Promise<C> -> Promise<R>) -> Promise<R>
+  usingX::(Promise<C> -> Promise<R>) -> Promise<R>
   	function withConnection(args) {
   		return function(handle) {
-  			// var conn = connect(args);
-  			// return handle(conn.map(first)).finally(=>conn.map(second).chain(call));
-  			var done;
-  			return handle(connect(args).map(function(connection, close) {
-  				done = close;
-  				return connection
-  			})).finally(function() {
-  				return done && done();
-  			})
+  			var conn = connect(args);
+  			return handle(conn.map(identity)) // returns the first argument
+  			// handle must not throw 
+  			.finally(function(res) {
+  				return conn.then(function(_, close) {
+  					return close(res);
+  				}, noop); // do nothing when the `connect()` attempt had failed, don't rethrow that
+  			});
   		};
   	}
   using :: [(Promise<C> -> Promise<R>) -> Promise<R>], ([C] -> Promise<R>) -> Promise<R>
   	using = function() { arguments.slice(0, -1).reduceRight(function(inner, useWith) {
   			return useWith(function(c) { return inner.apply(this, arguments.concat([c])); });
   		}, Promise.all.invoke("then", arguments[-1]));
-  	}
-  or maybe
-  usingX::Promise<(C -> Promise<R>) -> Promise<R>>
-  	function withConnection(args) {
-  		return connect(args).map(function(connection, close) {
-  			return function(handle) {
-  				return handle(connection).finally(close);
-  			})
-  		}; // relies on the handler being always called (and the connect() promise not to be cancelled)
-  		   // otherwise .finally() is never executed and we leak
-  		   // but attaching it after the map is complicated (see above)
-  	}
-  while using the following pattern has concise syntax, but makes requesting multiple ressources in parallel impossible
-  usingX::(C -> Promise<R>) -> Promise<R>
-  	function withConnection(args) {
-  		return connect(args).then(function(connection, close) {
-  			return handle(connection).finally(close);
-  		}); // cancelling the connect() promise still doesn't guarantee a call to close()
   	}
   Maybe implement timeout to console.error() undisposed ressources
 * make error constructors that are not invoked as constructors, but as Promise methods, return rejected promises:
