@@ -130,6 +130,16 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   how to find whether there is a farther onabort handler? By not getting a resolve continuation back from trigger?
   promises are not abortable by default. Use .makeAbortable(abortionHandler)
 * Promise::send = function(msg, ...args) { Promise.run(Promise.trigger(this.onsend, msg, args)); }
+* Promise::assert = function(test, msg) { return this.chain(function(){ return test.apply(null, arguments)) ? this : Promise.reject(msg); }); }
+* Subclassing:
+  - have a common prototype that implements common promise stuff (`then`(== safe+strict+cast), catch, finally etc)
+  - have a prototype for each of these modes:
+    - lazy (only if continued) / strict (ensures executing the callback) / strict+ (ensures evaluating to a value, including child promises)
+    - safe (catch exceptions in all callbacks and reject the promises with them)
+    - async (run everything detached) / asap (execute continuations immediately) - interesting for runners of lazy
+  - have methods to cast one into another (Object.create(other.prototype) and copying `fork` and `send`)
+  - implement Functor, Monad, Applicative either as a mixin in any of these prototypes, or even let the common one inherit from Monad
+  - Export the default (lazy+safe+async?) constructor, with static properties to get the other ones 
 */
 
 /* SPEC: Communication
