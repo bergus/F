@@ -74,7 +74,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   likely to be interesting (for unhandled rejections?) are stack traces from the creation of Promise objects, not those about the many callbacks that were executed
   
   There are three stack traces that might be interesting for promise consumers:
-  - the "real" call stack, on which the async callback, Promise.run, a few continuations and the handler are found
+  - the "real" call stack, on which the async callback, Promise.run, a few continuations with their actions and the handler are found
   - the promise resolutions that led to the current callback being called - basically the list of continuations that were Promise.run
   - the call from which the current handler *was installed* (and recursively, if that was a handler, it's installation...)
   security implications, possibly leaking information about other subscribers?
@@ -89,8 +89,21 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * split proceed::((promise)->continuation)->continuation and instruct::Array<Subscription>
 	-> see promise-instructing branch
 * make progress listening lazy: `send()` down listeners to dependencies only when they are installed
-* explicit .mapSafe/.chainSafe methods
-* for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT, with a concurrency option
+* for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT
+  which is basically a wrapper for <s>an array</s> a collection of promises
+  - have a concurrency option on the wrapper
+  - we need to support the following use cases:
+    - a collection of values is traversed with an asynchronous function
+    - a collection of promises is traversed with a synchronous function (more or less trivial, no concurrency option)
+    - a collection of promises is traversed with an asynchronous function
+    - a collection is traversed with a function that yields another collection (chain)
+  - each of these should yield some type that represents a promise for a collection (and can be turned into one). That might be
+    - a promise for a value
+    - a collection of promises
+    - a collection of (promised) collections
+  - reduce not only sequentially, but also with modes for parallel or unordered execution (either level-by-level, or asap)
+  - traversal with pure functions is typically unordered, i.e. the order of the collection is not respected
+  - fail modes: What to do with rejections - fail fast, atleastN?
 * Disposable = Promise<(C, disposer)>; disposer = Promise<R> -> void|Promise<X, E>
   usingX::(Promise<C> -> Promise<R>) -> Promise<R>
   	function withConnection(args) {
@@ -122,7 +135,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   - is there an inherent danger to have possibly "hanging" promises, which are always-pending and don't trigger finally() handlers?
 * implement finally:
   - finally: function fin() { Promise.cast(handler(promise)).thenResolve(promise); } return promise.then(fin, fin);
-    this can be cancelled!
+    this can be cancelled! Rethrow rejections? Wait for async finalizers?
   - always: register a token-less handler and return original promise
 * have a "no-token" value for the cancellationToken parameter of `.then()` which causes a strict execution of the handler even in cancellation case
   guarantee evaluation of child promises in cancellation case?
@@ -139,7 +152,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
     - async (run everything detached) / asap (execute continuations immediately) - interesting for runners of lazy
   - have methods to cast one into another (Object.create(other.prototype) and copying `fork` and `send`)
   - implement Functor, Monad, Applicative either as a mixin in any of these prototypes, or even let the common one inherit from Monad
-  - Export the default (lazy+safe+async?) constructor, with static properties to get the other ones 
+  - Export the default (lazy+safe+async?) constructor, with static properties to get the other ones
 */
 
 /* SPEC: Communication
