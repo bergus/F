@@ -54,7 +54,7 @@ function Stream(fn) {
 }
 
 function ContinuationBuilder() {
-	var waiting = [];
+	var waiting = this.waiting = [];
 	
 	function next() {
 		// invariant: waiting.length > 0
@@ -77,21 +77,21 @@ function ContinuationBuilder() {
 		} while ((active = waiting[0]) && active.priority == suspended.priority);
 		return next();
 	}
-	this.each = function(arr, cb) {
-		for (var i=0, l = arr.length; i<l; i++) {
-			var cont = cb(arr[i], i);
-			if (typeof cont == "function")
-				waiting.insertSorted(cont, "priority");
-		}
-		return this;
-	};
-	this.add = function(cont) {
-		if (typeof cont == "function")
-			waiting.insertSorted(cont, "priority");
-		return this;
-	};
 	this.getContinuation = next;
 }
+ContinuationBuilder.prototype.each = function(arr, cb) {
+	for (var i=0, l = arr.length; i<l; i++) {
+		var cont = cb(arr[i], i);
+		if (typeof cont == "function")
+			this.waiting.insertSorted(cont, "priority");
+	}
+	return this;
+};
+ContinuationBuilder.prototype.add = function(cont) {
+	if (typeof cont == "function")
+		this.waiting.insertSorted(cont, "priority");
+	return this;
+};
 
 /* @implements EventTarget */
 Stream.prototype.addEventListener = function addEventListener(type, handler) {
