@@ -73,13 +73,12 @@ function AdoptingPromise(opt) {
 		}
 		if (subscription.follow == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			return Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself")).fork({follow: adopt}); // "reject promise with a TypeError as the reason"
-		handlers.push(subscription);
-		return function advanceSubscription() {
+		handlers.push(subscription); // immediately register the subscription (and its token)
+		return function advanceSubscription() { // but don't request execution until the continuation has been called - implicit lazyness
 			if (subscription) {
 				if (typeof subscription.lazy == "function")
-					return subscription.lazy();
-				else
-					subscription.lazy = false;
+					return subscription.lazy; // TODO: set subscription to null?
+				subscription.lazy = false;
 				subscription = null;
 			} // else throw new Error("unsafe continuation");
 			return go;
@@ -177,7 +176,7 @@ Promise.runAsync = function runAsync(cont) {
 	function instantCont() {
 		if (!timer) return;
 		clearImmediate(timer);
-		return cont();
+		return cont;
 	}
 	cont.isScheduled = instantCont.isScheduled = true;
 	return instantCont;
@@ -341,9 +340,9 @@ function makeChaining(execute) {
 			}));
 			return function advanceChain() { // TODO: prove correctness
 				if (done) // this was not called before asyncRun got executed, and strict was never set to true
-					return done();
+					return done;
 				strict = true;
-				return go();
+				return go;
 			}
 		});
 	};
