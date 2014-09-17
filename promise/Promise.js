@@ -49,7 +49,7 @@ function makeResolvedPromiseConstructor(state, removable) {
 var FulfilledPromise = makeResolvedPromiseConstructor("success", "error");
 var RejectedPromise =  makeResolvedPromiseConstructor("error", "success");
 	
-function AdoptingPromise(opt) {
+function AdoptingPromise(fn) {
 // a promise that will at one point in the future adopt a given other promise
 // and from then on will behave identical to that adopted promise
 // since it is no more cancellable once settled on a certain promise, that one is typically a resolved one 
@@ -103,7 +103,7 @@ function AdoptingPromise(opt) {
 		// TODO: nullify handlers
 		return handlers; // sic! Does not return a continuation
 	}
-	var go = opt.call(this, adopt, function progress(event) {
+	var go = fn.call(this, adopt, function progress(event) {
 		var progressHandlers = handlers.filter(function(subscription) { return subscription.progress && !isCancelled(subscription.token); });
 		if (progressHandlers.length <= 1) return progressHandlers[0].progress;
 		var conts = new ContinuationBuilder();
@@ -122,6 +122,7 @@ function AdoptingPromise(opt) {
 		handlers.length = j;
 		return token.isCancelled = !j;
 	});
+	fn = null; // garbage collection
 	/* wrap go() in a safe continuation
 	TODO: without creating a non-constant number of unncessary stackframes
 	function advanceAdopting() {
@@ -134,7 +135,7 @@ function AdoptingPromise(opt) {
 	}; */
 }
 
-function Promise(opt) {
+function Promise(fn) {
 	AdoptingPromise.call(this, function callResolver(adopt, progress) {
 		function makeResolver(constructor) {
 		// creates a fulfill/reject resolver with methods to actually execute the continuations they might return
@@ -153,10 +154,11 @@ function Promise(opt) {
 			return resolve;
 		}
 		// TODO: make a resolver that also accepts promises, not only plain fulfillment values
-		return opt.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise), function triggerProgress() {
+		return fn.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise), function triggerProgress() {
 			Promise.run(Promise.trigger(progress, arguments));
 		});
 	});
+	fn = null; // garbage collection
 }
 
 FulfilledPromise.prototype = RejectedPromise.prototype = AdoptingPromise.prototype = Promise.prototype;
