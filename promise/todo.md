@@ -153,6 +153,10 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   - have methods to cast one into another (Object.create(other.prototype) and copying `fork` and `send`)
   - implement Functor, Monad, Applicative either as a mixin in any of these prototypes, or even let the common one inherit from Monad
   - Export the default (lazy+safe+async?) constructor, with static properties to get the other ones
+* (a -> Promise b) is an Arrow a b
+* Promise.Never stays forever pending and swallows all continuations thrown into it. Can be used for memory management
+  and for explicitly avoiding false positives in a never-resolving-promise detection
+  Maybe even something similar for unhandled-rejection tracking?
 */
 
 /* SPEC: Communication
