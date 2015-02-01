@@ -393,6 +393,8 @@ Promise.resolve = Promise.method(function getResolveValue(v) {
 });
 
 Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, token) {
+	if (arguments.length > 0 && onfulfilled == null && onrejected == null && onprogress == null)
+		console.warn("Promise::then: You have passed no handler function");
 	if (onprogress)
 		this.fork({progress: function(event) { onprogress.apply(this, arguments); }, token: token}); // TODO: check consistency with progress spec
 	return this.chainStrict(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), token);
