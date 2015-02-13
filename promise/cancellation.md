@@ -1,4 +1,19 @@
-= Cancellation Token+ =
+rewrite cancellation/d+ 
+how tokens are bound to handlers
+that you revoke handlers
+explicit token for interoperability
+encourage to offer token-less handler-attaching method
+why always reject
+cancellation is the new generator .return
+memento pattern?
+ 
+Rationale
+=========
+Cancellation is not an error and not a fulfillment. It means that the resolution value is no more needed, the underlying process to compute it can and shall be aborted (like an XMLHttpRequest). The callbacks just don't get called any more, there is no error passing through the errorback chain.
+
+For this, callbacks which are attached to a promise can be revoked so that they will not be called regardless what happens to the promise - as if it was forever pending.
+To support branching of promise chains without introducing unexpected cancellations, every promise keeps track of how many callbacks are attached and not revoked. When it is attempted to be cancelled, it can ensure that no callbacks are interested in the result any more. After asserting this, it can (and should) attempt to cancel all other promises that it depends on (or alternatively, the non-promise primitive it is built for). Mid-chain cancellation attempts are not effective in this scenario.
+
 Extending the idea of https://github.com/promises-aplus/cancellation-spec/issues/8, going further and amend/modify the specification for `then`, so that handlers themselves can be prevented from execution.
 
 Terminology
@@ -64,7 +79,7 @@ If the `promise` is **attempted to be cancelled** with an `error`, run the follo
 3. If `parentPromise` is pending, *attempt to cancel* it with `error`.
 4. [If `onRejected` is a function and neither it nor `onFulfilled` have been called, execute it with the `error` as its argument. (with 2.2.4. "async execution", and 2.2.7.1. "assimilation" in mind)]
 5. If `onFulfilled` or `onRejected` have been called and returned a `child` promise, *attempt to cancel* that with `error`.
-6. [Only if none of the cancellation attempts was successfull [and `onRejected` will not be executed]], *reject* `promise` with `error`.
+6. *reject* `promise` with `error`.
 7. Signal success.
 
 The `cancel` method
@@ -110,4 +125,3 @@ The basic idea of this draft is that handlers that were passed to `then` will no
 
 I'm not so sure about the steps 4 and 6 of *cancellation attempts*.
 * Putting step 4 into place ensures that still one of the two handlers is executed, and might allow interesting patterns to deal with cancellations.
-* Putting the condition in step 6 allows for the cancellation error to bubble through the chain (without disturbing side ~~effects~~ handlers, notice that all forks/branches have been ~~cut~~ cancelled so it's a linear chain). For discussion, see issue #10.
