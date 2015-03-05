@@ -157,6 +157,11 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 * Promise.Never stays forever pending and swallows all continuations thrown into it. Can be used for memory management
   and for explicitly avoiding false positives in a never-resolving-promise detection
   Maybe even something similar for unhandled-rejection tracking?
+* short-cut fusion for pure functions, especially chained getters. Avoid creating internal "overhead" objects prematurely?
+
+* p.expectCancellation() returns an uncancellable promise that is fulfilled when p is cancelled and rejected when resolved
+* unhandled-rejection: which promises in a chain or tree are reported?
+* short-cut-foldr on parallel collection (like a `find`)
 */
 
 /* SPEC: Communication
