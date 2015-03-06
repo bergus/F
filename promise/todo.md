@@ -161,7 +161,15 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 
 * p.expectCancellation() returns an uncancellable promise that is fulfilled when p is cancelled and rejected when resolved
 * unhandled-rejection: which promises in a chain or tree are reported?
+* an .uncancellable()-like function that doesn't exactly make a promise uncancellable, but simply doesn't propagate cancellation attempts up the chain
+  and takes a callback that is called on cancellation
+  similar to an .oncancellable() function that takes a callback, but also propagates cancellation attempts
+* memoize-promise: take cancellation into account, and un-cache on cancellation or prevent propagation of cancellation attempts and always fetch
 * short-cut-foldr on parallel collection (like a `find`)
+
+* autoclosingpromise calls back with retur value of res.dispose() after first bunch of handlers
+* extends if the convey the same ticket
+* is disposable a comonad?
 */
 
 /* SPEC: Communication
