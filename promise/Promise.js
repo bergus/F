@@ -74,6 +74,7 @@ function AdoptingPromise(fn) {
 		if (subscription.follow == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			return Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself")).fork({follow: adopt}); // "reject promise with a TypeError as the reason"
 		handlers.push(subscription); // immediately register the subscription (and its token)
+		// TODO: don't let advanveSubscription have access to handlers, resolution etc.
 		return function advanceSubscription() { // but don't request execution until the continuation has been called - implicit lazyness
 			if (subscription) {
 				if (typeof subscription.lazy == "function")
@@ -240,6 +241,19 @@ ContinuationBuilder.join = function joinContinuations(continuations) {
 		}
 		continuations.length = j;
 		return (j <= 1) ? continuations[0] : runBranches;
+	};
+};
+ContinuationBuilder.safe = function makeSafeContinuation(fn) {
+	if (typeof fn != "function")
+		return fn;
+	return function safeContinuation() {
+		var cont = fn();
+		if (typeof cont != "function")
+			return cont;
+		if (cont == fn) // it's volatile, it must be safe!
+			return cont;
+		fn = cont;
+		return safeContinuation; // returns itself (volatile)
 	};
 };
 

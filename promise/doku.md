@@ -88,7 +88,7 @@ Promise.resolve({then: function(_, cb){cb(new Error("oh noes"))}}).mapError(cons
 `F\Promise` is implemented via [continuations](https://en.wikipedia.org/wiki/Continuation). They expand the concept of callbacks, and invert the call stack. While a callback to a functions says "call me and I'll do something", it might also say "and then I'll tell you what else to do" - it returns a continuation. The caller will then at some point (he can decide) continue with that task. This is done to support long chains of operations without growing the call stack (as callbacks would do).
 
 Continuations are supposed to be called only once and be used no more.
-When continuations are executed, to are supposed to be considered *unsafe*, that is they might do harm when called multiple times - like executing a handler twice that must be called once only.
+When continuations are executed, they are supposed to be considered *unsafe*, that is they might do harm when called multiple times - like executing a handler twice that must be called once only.
 A continuation is *safe* when it simply does nothing when it is called not for the first time.
 Some continuations are *volatile* and do different things on each call, e.g. returning itself for optimisations. They might be impure, but should not be written as unsafe.
 A (volatile) continuation is *thread-safe* when it does no harm even on recursive calls.
