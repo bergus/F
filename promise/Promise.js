@@ -100,10 +100,10 @@ function AdoptingPromise(fn) {
 				handlers[j] = handlers[i]; // filter out lazy handlers
 		}
 		handlers.length = j;
-		// advanceAdopting = go; TODO: Unwrap the go continuation once it got here
 		// TODO: nullify handlers
 		return handlers; // sic! Does not return a continuation
 	}
+	// expects `go` to be safe. TODO: Prove correctness. If wrapper is required, possibly unwrap when adopt() is called.
 	var go = fn.call(this, adopt, function progress(event) {
 		var progressHandlers = handlers.filter(function(subscription) { return subscription.progress && !isCancelled(subscription.token); });
 		if (progressHandlers.length <= 1) return progressHandlers[0].progress;
@@ -124,16 +124,6 @@ function AdoptingPromise(fn) {
 		return token.isCancelled = !j;
 	});
 	fn = null; // garbage collection
-	/* wrap go() in a safe continuation
-	TODO: without creating a non-constant number of unncessary stackframes
-	function advanceAdopting() {
-		if (typeof go != "function") return advanceAdopting = undefined;
-		var next = go(); // the continuation of the opt.call must not be called multiple times
-		if (next == go) // consider it being a self-returning threadsafe one
-			return advanceAdopting = next;
-		go = next;
-		return advanceAdopting;
-	}; */
 }
 
 function Promise(fn) {
@@ -155,9 +145,9 @@ function Promise(fn) {
 			return resolve;
 		}
 		// TODO: make a resolver that also accepts promises, not only plain fulfillment values
-		return fn.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise), function triggerProgress() {
+		return ContinuationBuilder.safe(fn.call(this, makeResolver(FulfilledPromise), makeResolver(RejectedPromise), function triggerProgress() {
 			Promise.run(Promise.trigger(progress, arguments));
-		});
+		}));
 	});
 	fn = null; // garbage collection
 }
@@ -246,24 +236,30 @@ ContinuationBuilder.join = function joinContinuations(continuations) {
 ContinuationBuilder.safe = function makeSafeContinuation(fn) {
 	if (typeof fn != "function")
 		return fn;
-	return function safeContinuation() {
+	if (typeof fn.safeContinuation == "function")
+		return fn.safeContinuation;
+	// prevents multiple invocations of the same continuation (which is possibly unsafe)
+	function safeContinuation() {
+		if (typeof fn != "function")
+			return fn;
 		var cont = fn();
-		if (typeof cont != "function")
-			return cont;
 		if (cont == fn) // it's volatile, it must be safe!
 			return cont;
 		fn = cont;
 		return safeContinuation; // returns itself (volatile)
-	};
+	}
+	// fn.safeContinuation = safeContinuation;
+	safeContinuation.safeContinuation = safeContinuation;
+	return safeContinuation;
 };
 
 Promise.prototype.onsend = function noHandler(event) {};
 Promise.prototype.send = function send() {
-	return Promise.run(Promise.trigger(this.send, arguments));
+	return Promise.run(Promise.trigger(this.onsend, arguments));
 };
 
 Promise.prototype.cancel = function cancel(reason, token) {
-	if (this.send != Promise.prototype.send) // needs to be still pending, with the ability to send messages
+	if (this.onsend != Promise.prototype.onsend) // needs to be still pending, with the ability to send messages
 		return false;
 	if (!(reason && reason instanceof Error && reason.cancelled===true))
 		reason = new CancellationError(reason || "cancelled operation");

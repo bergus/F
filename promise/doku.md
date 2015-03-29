@@ -89,7 +89,7 @@ Promise.resolve({then: function(_, cb){cb(new Error("oh noes"))}}).mapError(cons
 
 Continuations are supposed to be called only once and be used no more.
 When continuations are executed, they are supposed to be considered *unsafe*, that is they might do harm when called multiple times - like executing a handler twice that must be called once only.
-A continuation is *safe* when it simply does nothing when it is called not for the first time.
+A continuation is *safe* when it simply does nothing when it is called not for the first time - it is *idempotent*.
 Some continuations are *volatile* and do different things on each call, e.g. returning itself for optimisations. They might be impure, but should not be written as unsafe.
 A (volatile) continuation is *thread-safe* when it does no harm even on recursive calls.
 
