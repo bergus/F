@@ -2,6 +2,7 @@
 * .canceled=true property on errors (https://github.com/promises-aplus/cancellation-spec/issues/1#issuecomment-11452893)
 * rejection or not? (https://github.com/promises-aplus/cancellation-spec/issues/1#issuecomment-11624303)
 * .catchCancelation / .handleCancellation
+* .catchCancelled(retry) === catch(CancellationError, retry)
 * CancellationException instanceof Error, .name = 'OperationCancelled', .cancelled = true, .reason & .data (https://github.com/promises-aplus/cancellation-spec/issues/2)
 * .abort() is .cancel() without propagation
 * Cancellation should only need to be considered by the PromiseLibraries/Implementations, the person actually initiating/using cancellation and the person managing the underlying IO operation. (https://github.com/promises-aplus/cancellation-spec/issues/3#issuecomment-11708125)
@@ -166,6 +167,12 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   similar to an .oncancellable() function that takes a callback, but also propagates cancellation attempts
 * memoize-promise: take cancellation into account, and un-cache on cancellation or prevent propagation of cancellation attempts and always fetch
 * short-cut-foldr on parallel collection (like a `find`)
+* idea: when adopting an inner promise, pass your (single, cancellable) subscription immediately to it
+        when having adopted an inner promise, pass new (cancellable) subscriptions immediately to
+        when more subscriptions are registered, *highjack* the already-passed subscription
+        when processing a subscription, mark it as such with the result, so that forking a settled promise can use a quick lookup
+* idea: put a `send` method on subscriptions on their registration, so that the successors don't need to hold a reference to the parent promise
+        the parent can decide on its own when to vanish, and what send abilities to provide
 
 * autoclosingpromise calls back with retur value of res.dispose() after first bunch of handlers
 * extends if the convey the same ticket
@@ -253,7 +260,7 @@ x.map(console.log);
 [X] above unfolded `chain` call can execute all callbacks synchronously (in the same turn)
 [ ] when executing `chain` callbacks, don't have them schedule their continuations
     TODO. at least they're immediately unscheduled.
-[X] the innermost promise resolution needs to resolve n promises
+[ ] the innermost promise resolution doesn't need to resolve n promises
 [X] when resolving the innermost promise, prevent a stack overflow
 [?] the innermost promise resolution doesn't execute n callbacks
 [X] the innermost promise resolution doesn't need n function calls until the outermost registered callbacks (console.log)

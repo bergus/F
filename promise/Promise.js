@@ -409,7 +409,31 @@ Promise.prototype.then = function then(onfulfilled, onrejected, onprogress, toke
 		this.fork({progress: function(event) { onprogress.apply(this, arguments); }, token: token}); // TODO: check consistency with progress spec
 	return this.chainStrict(Promise.method(onfulfilled, "Promise::then"), Promise.method(onrejected, "Promise::then"), token);
 };
-
+Promise.prototype.catch = function catch_(onrejected) {
+	if (typeof onrejected != "function") console.warn("Promise::catch: You must pass a function, instead of", onrejected);
+	if (arguments.length <= 1)
+		return this.then(null, onrejected);
+	var tohandle = onrejected,
+	    promise = this;
+	onrejected = arguments[1];
+	return this.chainStrict(null, Promise.method( isErrorClass(tohandle)
+	  ? function(err) {
+	    	if (err instanceof tohandle) return onrejected.call(this, arguments);
+	    	else return promise;
+	    }
+	  : function(err) {
+	    	if (tohandle(err)) return onrejected.call(this, arguments);
+	    	else return promise;
+	    }
+	));
+};
+function isErrorClass(constructor) {
+	if (constructor.prototype instanceof Error) return true; // premature optimisation
+	for (var p=constructor.prototype; p!=null; p=Object.getPrototypeOf(p))
+		if (Object.prototype.toString.call(p) == "[object Error]")
+			return true;
+	return false;
+}
 Promise.prototype.timeout = function timeout(ms) {
 	return Promise.timeout(ms, this);
 };
