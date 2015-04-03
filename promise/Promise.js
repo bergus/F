@@ -256,12 +256,25 @@ function isCancelled(token) {
 	return !!token && (token.isCancelled === true || (token.isCancelled !== false && token.isCancelled()));
 }
 
-Promise.of = Promise.fulfill = function of() {
-	return new FulfilledPromise(arguments);
-};
-Promise.reject = function reject() {
-	return new RejectedPromise(arguments);
-};
+function makeUnitFunction(constructor) {
+	return function of(val) {
+		// return new constructor(arguments);
+		// optimisable in V8:
+		var args = [];
+		switch (arguments.length) {
+			case 3: args[2] = arguments[2];
+			case 2: args[1] = arguments[1];
+			case 1: args[0] = arguments[0];
+			case 0: break;
+			default:
+				for (var i=0; i<arguments.length; i++)
+					args[i] = arguments[i];
+		}
+		return new constructor(args);
+	};
+}
+Promise.of = Promise.fulfill = makeUnitFunction(FulfilledPromise);
+Promise.reject = makeUnitFunction(RejectedPromise);
 
 function makeMapping(createSubscription, build) {
 	return function map(fn) {
