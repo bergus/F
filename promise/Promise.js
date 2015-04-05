@@ -24,6 +24,7 @@ function makeResolvedPromiseConstructor(state, removable) {
 			return continuations.get();
 		}
 		this.fork = function forkResolved(subscription) {
+			// console.log(JSON.stringify(Object.keys(subscription)));
 			if (isCancelled(subscription.token)) return;
 			subscription[removable] = null;
 			if (typeof subscription[state] == "function") {
@@ -40,6 +41,15 @@ function makeResolvedPromiseConstructor(state, removable) {
 			} else if (typeof subscription.proceed == "function") {
 				return subscription.proceed(that); // TODO should not execute immediately?
 			} else if (subscription.instruct && subscription.instruct.length) {
+				/* TODO: lazy handlers
+				for (var i=0, j=0; i<handlers.length; i++) {
+					var subscription = handlers[i];
+					if (subscription.lazy !== false)
+						subscription.lazy = resolution.fork(subscription); // TODO: Does it matter when fork() doesn't return a continuation?
+					else if (j++ != i)
+						handlers[j] = handlers[i]; // filter out lazy handlers
+				}
+				handlers.length = j; */
 				// TODO? remove progress/removable from handlers right now
 				handlers.push.apply(handlers, subscription.instruct);
 				return runHandlers;
@@ -54,8 +64,9 @@ function AdoptingPromise(opt) {
 // a promise that will at one point in the future adopt a given other promise
 // and from then on will behave identical to that adopted promise
 // since it is no more cancellable once settled on a certain promise, that one is typically a resolved one 
-	var resolution = null,
-	    handlers = [],
+	var handle = null,
+	//  resolution = null,
+	//  handlers = null,
 	    that = this;
 	
 	this.fork = function forkAdopting(subscription) {
@@ -66,15 +77,45 @@ function AdoptingPromise(opt) {
 	// if the promise is not yet resolved, but there is a continuation waiting to
 	//    do so (and continuatively execute the handlers), that one is returned
 	// else undefined is returned
-		if (resolution) {
-			var cont = resolution.fork(subscription);
-			if (this instanceof Promise && this.fork == forkAdopting)
-				this.fork = resolution.fork; // should've been done in the adoption already
-			return cont;
-		}
+	
+	// if pending
+		// if no handle: replace
+		// if empty handle: shouldn't happen?
+		// if handlers on handle: push
+	// if resolved
+		// (employ shortcut)
+		// if no handle: shouldn't happen!
+		// if empty handle: push? fork resolution? (same thing?)
+		// if handlers on handle: push? fork resolution? (same thing?)
+	// if settled
+		// if no handle: shouldn't happen!
+		// if empty handle: fork resolution
+		// if handlers on handle: shouldn't happen? fork resolution
+		
 		if (subscription.proceed == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			return adopt(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
-		handlers.push(subscription);
+		
+		if (!handle)
+			handle = subscription;
+		else if (handle.resolution && handle.resolution != that) {
+			var cont = handle.resolution.fork(subscription);
+			if (this instanceof Promise && this.fork == forkAdopting) {
+				this.fork = handle.resolution.fork; // employ shortcut, empower garbage collection
+				// this.onsend = handle.resolution.onsend?
+			}
+			return cont;
+		} else {
+			if (!handle.instruct) {
+				if (handle.proceed || handle.success || handle.error)
+					handle = {token: null, instruct: [handle], resolution: null};
+				else
+					handle.instruct = [];
+				handle.token = getToken(handle.instruct);
+			}
+			handle.instruct.push(subscription);
+		}
+		if (subscription.lazy === false || subscription.instruct)
+			return go;
 		return function advanceSubscription() {
 			if (subscription) {
 				if (typeof subscription.lazy == "function")
@@ -87,23 +128,27 @@ function AdoptingPromise(opt) {
 		}
 	};
 	function adopt(r) {
-		if (resolution) return; // throw new Error("cannot adopt different promises");
+	// if pending
+		// if no handle: create one and…
+		// if empty handle: fork with handle
+		// if handlers on handle: fork with handle
+	// if resolved
+		// shouldn't happen
+	// if settled
+		// shouldn't happen
+		
+		if (!handle)
+			handle = {token: null, instruct: null, resolution: r};
+		else if (handle.resolution && handle.resolution != that) return; // throw new Error("cannot adopt different promises");
+		
 		if (r == that) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			r = Promise.reject(new TypeError("Promise|adopt: not going to assimilate itself")); // "reject promise with a TypeError as the reason"
-		resolution = r;
-		that.fork = resolution.fork; // shortcut unnecessary calls, collect garbage methods
-		that.send = resolution.send;
-		for (var i=0, j=0; i<handlers.length; i++) {
-			var subscription = handlers[i];
-			if (subscription.lazy !== false)
-				subscription.lazy = resolution.fork(subscription); // TODO: Does it matter when fork() doesn't return a continuation?
-			else if (j++ != i)
-				handlers[j] = handlers[i]; // filter out lazy handlers
-		}
-		handlers.length = j;
+		handle.resolution = r;
+		that.fork = r.fork; // shortcut unnecessary calls, collect garbage methods
+		that.send = r.send;
+		
 		// advanceAdopting = go; TODO: Unwrap the go continuation once it got here
-		// TODO: nullify handlers
-		return resolution.fork({instruct: handlers});
+		return r.fork(handle);
 	}
 	var go = opt.call(this, adopt, function progress() {
 		var args = arguments;
@@ -255,16 +300,26 @@ function isCancelled(token) {
 	// it is cancelled when token exists, and .isCancelled yields true
 	return !!token && (token.isCancelled === true || (token.isCancelled !== false && token.isCancelled()));
 }
+function getToken(subscriptions) {
+	return {
+		isCancelled: function() {
+			for (var i=0; i<subscriptions.length; i++)
+				if (!isCancelled(subscriptions[i].token))
+					return false;
+			return true;
+		}
+	};
+}
 
 function makeUnitFunction(constructor) {
 	return function of(val) {
 		// return new constructor(arguments);
-		// optimisable in V8:
+		// optimisable in V8 - http://jsperf.com/array-with-and-without-length/
 		var args = [];
 		switch (arguments.length) {
 			case 3: args[2] = arguments[2];
 			case 2: args[1] = arguments[1];
-			case 1: args[0] = arguments[0];
+			case 1: args[0] = val;
 			case 0: break;
 			default:
 				for (var i=0; i<arguments.length; i++)
