@@ -100,10 +100,20 @@ A (volatile) continuation is *thread-safe* when it does no harm even on recursiv
 
 * `success`: to be called with the fulfillment values when the promise is fulfilled. Returns a continuation.
 * `error`: to be called with the rejection values when the promise is rejected. Returns a continuation.
-* <s>`proceed`: to be called with the promise itself, when the respective one of the above handlers is not present. Returns a continuation.</s>
-* `follow`: to be called with the promise itself, when it is settled and the respective one of the above handlers is not present. Returns an array of further subscriptions to invoke.
+* `proceed`: to be called with the promise itself, when the respective one of the above handlers is not present. Returns a continuation.
+* <s>`follow`: to be called with the promise itself, when it is settled and the respective one of the above handlers is not present. Returns an array of further subscriptions to invoke.</s>
+* `instruct`: an Array of further subscriptions to process, when none of the above handlers is executed.
+* `resolution`: a fast-lane reference to the eventual resolution for adopting promises
+* `progress`: to be called with a progress event, returns a continuation
 * `token`: a `CancellationToken` to register, which will prevent the cancellation-rejection of the promise until it is cancelled.
   When cancelled, the whole subscription becomes invalidated, and none of the above handlers are going to be executed.
+* `lazy`: prevents the execution through asynchronously invoked continuation runners. It is typically forced by the returned continuation. When not set, only the `resolution` field will be assigned
+
+token|instruct|resolution
+token|lazy|proceed|success|error
+token|lazy|proceed|success|error|progress
+token|lazy|proceed|success|error|resolution
+token|lazy|proceed|success|error|progress|resolution
 
 The subscription object might get altered at will.
 
