@@ -26,18 +26,7 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
 	-> Functor
 * .then(function(r, s){ [...]; s(x, y, z)}).then(fn) == .then(function(r){ [...]; return fn(x, y, z);})
 	-> Composition law of Functors
-* function x(p){return Promise.prompt(p);}); x("").then(x) // Endlosschleife!
 
-* What happens when an error handler handles a CancellationError? Would the error handler be executed, but ignored?
-  Would the resulting promise resolve as normal, and could (need to) be cancelled a second time?
-  Do CancellationErrors need to be propagated at all, or are the promises in the chain already rejected by the cancellation itself?
-* What happens to a then handler (or its result) on a resolved promise that is cancelled before the handler returns?
-	unlikely: the cancellation is issued from the handler itself (which might better `throw` a `new CancellationError`, but that's not necessarily the same)
-	-> A handler that is cancelled before it could get executed is no more executed, even it the promise is resolved.
-	-> If the handler did result a promise, that will be immediately cancelled
-* a `send()` call currently recursively descends down the whole chain until it finds a promise that does not respond to it
-	-> no single resolved promise should respond to a `send()` call
-* a cancel attempt message tries to cancel already cancelled promises again
 * a Lazy (subclassing?) constructor that will <s>wait for a "run" message</s> offer non-strict (non-scheduling) variants of methods
 	-> by default, all methods are lazy now; execution needs to be forced by fork()ing and (async)run()ning that continuation. Also `.then` requires strictness.
 * progress() channel currently is forwarding recursively, while supporting continuations
@@ -47,6 +36,12 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   - is there a contract that only the current-subscription attached handlers are called by the returned continuations? Or is the continuation free to run the handlers *and their continuations*?
   - is the order of invocation of the continuations messed up by this? Or is that not guaranteed anyways?
   - are there cases where a non-global `handlers` array, and a new continuation for each level, leads to a really harmful recursive descent?
+* when executing `chain` callbacks, don't have them schedule their continuations. at least they're immediately unscheduled.
+* Prevent circles in the dependency chain, reject promises that depend on themselves
+  	var x = a.chain(function(){ return x.*inner chain*});
+  	var x = a.chain(function(){ return x}).*outer chain*;
+  bonus: work with combinators like .map() in the chain
+
 */
 
 /* IDEAS
@@ -82,13 +77,9 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   https://stackoverflow.com/questions/24076676/call-stack-for-callbacks-in-node-js/24077055#24077055
 * bind message to Promise.run from which async action the continuations are ran, and where the call to this task was issued
 * a PendingPromise constructor that eats all handlers (for breakfast)
-* a AssimilatePending constructor that can forward handlers and handles send()s and cancellation (like chain etc already do it)
-  TODO: Prevent circles in the dependency chain, reject promises that depend on themselves
-  	var x = a.chain(function(){ return x.*inner chain*});
-  	var x = a.chain(function(){ return x}).*outer chain*;
-  bonus: work with combinators like .map() in the chain
-* split proceed::((promise)->continuation)->continuation and instruct::Array<Subscription>
-	-> see promise-instructing branch
+  Promise.Never stays forever pending and swallows all continuations thrown into it. Can be used for memory management
+  and for explicitly avoiding false positives in a never-resolving-promise detection
+  Maybe even something similar for unhandled-rejection tracking?
 * make progress listening lazy: `send()` down listeners to dependencies only when they are installed
 * for map/filter use the promiseT (array?) monad transformer from https://github.com/briancavalier/promiseT
   which is basically a wrapper for <s>an array</s> a collection of promises
@@ -155,9 +146,6 @@ Promise.run(a.fork({error: function(e) { console.log(e.stacktrace);}}))
   - implement Functor, Monad, Applicative either as a mixin in any of these prototypes, or even let the common one inherit from Monad
   - Export the default (lazy+safe+async?) constructor, with static properties to get the other ones
 * (a -> Promise b) is an Arrow a b
-* Promise.Never stays forever pending and swallows all continuations thrown into it. Can be used for memory management
-  and for explicitly avoiding false positives in a never-resolving-promise detection
-  Maybe even something similar for unhandled-rejection tracking?
 * short-cut fusion for pure functions, especially chained getters. Avoid creating internal "overhead" objects prematurely?
 
 * p.expectCancellation() returns an uncancellable promise that is fulfilled when p is cancelled and rejected when resolved
@@ -193,8 +181,8 @@ What values exactly are passed through, and how to interact with them, is not pa
 OPEN: What happens in case of multiple `then()` calls on one promise (which might be joined again, e.g. through `.all()`)? Allow event duplication, or do we require pass-through of the handlers themselves down to the event source?
 
 * Send
-Every promise MUST have a `send()` method. When called, it MUST invoke the `.send()` methods on all pending promises that it depends on with the exact same arguments. It MUST `return` the result of such a call, or an array of the results of multiple calls. 
-If a promise is resolved, a `.send()` call SHOULD (must???) be a noop, and MUST `return undefined`.
+Every promise MUST have a `onsend()` method. When called, it MUST invoke the `.onsend()` methods on all pending promises that it depends on with the exact same arguments. It MUST `return` the result of such a call, or an array of the results of multiple calls. 
+If a promise is resolved, a `.onsend()` call SHOULD (must???) be a noop, and MUST `return undefined`.
 The structure of the arguments is not part of this specification, though there is a recommendation below.
 
 * [NOTE] parameters
@@ -219,58 +207,7 @@ A proposal cancellation implemented in terms of that can be found below.
 // Start-Stop-Konzept ausarbeiten
 // insbesondere bei Verzweigungen nur eigene Zweige anhalten? Implementation im endlichen Automaten?
 
-----
 
-// Think of a (naive?) promise loop:
-Promise.until = function(cond, fn, value) {
-	if (cond(value)) return Promise.of(value); // for while: if (!cond(value)) …
-	return fn(value).chain(Promise.until.bind(Promise, cond, fn));
-};
-// (example usage)
-Promise.until(function(x) { return x > 9 }, function(x) {
-	console.log(x);
-	return Promise.defer(100, x).chain(function(y) {
-		console.log("timed "+y);
-		return Promise.of(y+1);
-	});
-}, 0).map(function(x){console.log(x, "done"); debugger; });
-// which would unfold to something like
-var x= Promise.of(0).chain(function(x) {
- return Promise.of(1).chain(function(x) {
-  return Promise.of(2).chain(function(x) {
-   return Promise.of(3).chain(function(x) {
-    return Promise.of(4).chain(function(x) {
-     return Promise.of(5).chain(function(x) {
-      return Promise.of(6).chain(function(x) {
-       return Promise.of(7).chain(function(x) {
-        return Promise.of(8).chain(function(x) {
-         return Promise.of(9);
-        });
-       });
-      });
-     });
-    });
-   });
-  });
- });
-});
-x.map(console.log);
-
-/* How can we deal with this efficiently?
-[X] above unfolded `chain` call can execute all callbacks synchronously (in the same turn)
-[ ] when executing `chain` callbacks, don't have them schedule their continuations
-    TODO. at least they're immediately unscheduled.
-[X] the innermost promise resolution doesn't need to resolve n promises
-[X] when resolving the innermost promise, prevent a stack overflow
-[X] the innermost promise resolution doesn't execute n callbacks
-[X] the innermost promise resolution doesn't need n function calls until the outermost registered callbacks (console.log)
-[X] after the promise is resolved, adding a new callback doesn't lead to a stack overflow
-
-=> We don't get a better complexity than O(n), since we need to resolve n promises. However, for multiple handlers, we should be able to balance the load and get better average complexity.
-=> For promises that sequentially adopt many others towards settling, we can distribute this with O(1) adoption
-=> We do not want to get O(n²) runtime where each involved promise uses a subscription with O(n) complexity
-
-*/
 ----
 
 var t1 = Promise.of("1"),
