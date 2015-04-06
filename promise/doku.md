@@ -107,7 +107,7 @@ A (volatile) continuation is *thread-safe* when it does no harm even on recursiv
 * `progress`: to be called with a progress event, returns a continuation
 * `token`: a `CancellationToken` to register, which will prevent the cancellation-rejection of the promise until it is cancelled.
   When cancelled, the whole subscription becomes invalidated, and none of the above handlers are going to be executed.
-* `lazy`
+* `lazy`: prevents the execution through asynchronously invoked continuation runners. It is typically forced by the returned continuation. When not set, only the `resolution` field will be assigned
 
 token|instruct|resolution
 token|lazy|proceed|success|error

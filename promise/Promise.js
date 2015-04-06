@@ -3,8 +3,9 @@
 function makeResolvedPromiseConstructor(state, removable) {
 	return function ResolvedPromise(args) {
 		var that = this,
-		    handlers = [];
+		    handlers = null;
 		function runHandlers() {
+			if (!handlers) return;
 			var continuations = new ContinuationBuilder();
 			for (var i=0; i<handlers.length;) {
 				var subscription = handlers[i++];
@@ -17,14 +18,23 @@ function makeResolvedPromiseConstructor(state, removable) {
 				} else if (subscription.proceed) {
 					var cont = subscription.proceed(that);
 					if (cont != runHandlers) continuations.add();
-				} else if (subscription.instruct)
-					handlers.push.apply(handlers, subscription.instruct);
+				} else if (subscription.instruct) {
+					for (var i=0; i<subscription.instruct.length; i++) {
+						var sub = subscription.instruct[i];
+						if (sub.lazy !== false) { // filter out lazy handlers
+							sub.lazy = true;
+							sub.resolution = that;
+						} else
+							handlers.push(sub);
+					}
+					subscription.instruct = null;
+				}
 			}
 			// assert: handlers.length == 0
+			handlers = null;
 			return continuations.get();
 		}
 		this.fork = function forkResolved(subscription) {
-			// console.log(JSON.stringify(Object.keys(subscription)));
 			if (isCancelled(subscription.token)) return;
 			subscription[removable] = null;
 			if (typeof subscription[state] == "function") {
@@ -41,17 +51,25 @@ function makeResolvedPromiseConstructor(state, removable) {
 			} else if (typeof subscription.proceed == "function") {
 				return subscription.proceed(that); // TODO should not execute immediately?
 			} else if (subscription.instruct && subscription.instruct.length) {
-				/* TODO: lazy handlers
-				for (var i=0, j=0; i<handlers.length; i++) {
-					var subscription = handlers[i];
-					if (subscription.lazy !== false)
-						subscription.lazy = resolution.fork(subscription); // TODO: Does it matter when fork() doesn't return a continuation?
-					else if (j++ != i)
-						handlers[j] = handlers[i]; // filter out lazy handlers
+				var j = 0;
+				if (!handlers)
+					handlers = subscription.instruct;
+				else
+					j = handlers.length;
+				for (var i=0; i<subscription.instruct.length; i++) {
+					var sub = subscription.instruct[i];
+					if (sub.lazy !== false) { // filter out lazy handlers
+						sub.lazy = true;
+						sub.resolution = that;
+					//} else if (handlers == subscription.instruct) {
+					//	if (j++ != i)
+					//		handlers[j] = sub;
+					} else
+						handlers[j++] = sub;
 				}
-				handlers.length = j; */
+				handlers.length = j;
+				subscription.instruct = null;
 				// TODO? remove progress/removable from handlers right now
-				handlers.push.apply(handlers, subscription.instruct);
 				return runHandlers;
 			}
 		};
@@ -63,45 +81,34 @@ var RejectedPromise =  makeResolvedPromiseConstructor("error", "success");
 function AdoptingPromise(opt) {
 // a promise that will at one point in the future adopt a given other promise
 // and from then on will behave identical to that adopted promise
-// since it is no more cancellable once settled on a certain promise, that one is typically a resolved one 
+// since it is no more cancellable once resolved with a certain promise, that one is typically a settled one
 	var handle = null,
-	//  resolution = null,
-	//  handlers = null,
 	    that = this;
 	
 	this.fork = function forkAdopting(subscription) {
 	// registers the onsuccess and onerror continuation handlers
 	// it is expected that neither these handlers nor their continuations do throw
-	// if the promise is already resolved, it returns a continuation to execute
+	// if the promise is already settled, it returns a continuation to execute
 	//    them (and possibly other waiting ones) so that the handlers are *not immediately* executed
 	// if the promise is not yet resolved, but there is a continuation waiting to
 	//    do so (and continuatively execute the handlers), that one is returned
 	// else undefined is returned
 	
-	// if pending
-		// if no handle: replace
-		// if empty handle: shouldn't happen?
-		// if handlers on handle: push
-	// if resolved
-		// (employ shortcut)
-		// if no handle: shouldn't happen!
-		// if empty handle: push? fork resolution? (same thing?)
-		// if handlers on handle: push? fork resolution? (same thing?)
-	// if settled
-		// if no handle: shouldn't happen!
-		// if empty handle: fork resolution
-		// if handlers on handle: shouldn't happen? fork resolution
-		
+	// if the promise is already resolved, it forwards the subscription,
+	// else if there is no handle yet, it just uses the subscription for the handle
+	//      if there is a subscription handle, it replaces it with an instruction handler
+	//      if there is an instruction handle, it adds the subscription on it
+	
 		if (subscription.proceed == adopt) // A+ 2.3.1: "If promise and x refer to the same object," (instead of throwing)
 			return adopt(Promise.reject(new TypeError("Promise/fork: not going to wait to assimilate itself"))); // "reject promise with a TypeError as the reason"
 		
 		if (!handle)
 			handle = subscription;
-		else if (handle.resolution && handle.resolution != that) {
+		else if (handle.resolution && handle.resolution != that) { // expected to never happen
 			var cont = handle.resolution.fork(subscription);
 			if (this instanceof Promise && this.fork == forkAdopting) {
 				this.fork = handle.resolution.fork; // employ shortcut, empower garbage collection
-				// this.onsend = handle.resolution.onsend?
+				this.onsend = handle.resolution.onsend;
 			}
 			return cont;
 		} else {
@@ -120,23 +127,20 @@ function AdoptingPromise(opt) {
 			if (subscription) {
 				if (typeof subscription.lazy == "function")
 					return subscription.lazy();
-				else
-					subscription.lazy = false;
+				else if (subscription.resolution)
+					return subscription.lazy = subscription.resolution.fork(subscription); // TODO: Does it matter when fork() doesn't return a continuation?
+				// else
+				subscription.lazy = false;
 				subscription = null;
 			} // else throw new Error("unsafe continuation");
 			return go;
 		}
 	};
 	function adopt(r) {
-	// if pending
-		// if no handle: create one and…
-		// if empty handle: fork with handle
-		// if handlers on handle: fork with handle
-	// if resolved
-		// shouldn't happen
-	// if settled
-		// shouldn't happen
-		
+	// set the resolution to another promise
+	// if already resolved, does nothing
+	// creates an empty instruction handle if necessary
+	// forwards the handle (if not a still lazy subscription)
 		if (!handle)
 			handle = {token: null, instruct: null, resolution: r};
 		else if (handle.resolution && handle.resolution != that) return; // throw new Error("cannot adopt different promises");
@@ -147,8 +151,11 @@ function AdoptingPromise(opt) {
 		that.fork = r.fork; // shortcut unnecessary calls, collect garbage methods
 		that.send = r.send;
 		
-		// advanceAdopting = go; TODO: Unwrap the go continuation once it got here
-		return r.fork(handle);
+		go = null; // the aim of go continuation was to advance the resolution process until it provided us a promise to adopt
+		if (!handle.instruct && handle.lazy !== false)
+			return;
+		// from now on, fork calls will return the continuation that advances the adopted promise to eventual resolution // TODO: do we need that at all?
+		return go = r.fork(handle);
 	}
 	var go = opt.call(this, adopt, function progress() {
 		var args = arguments;
